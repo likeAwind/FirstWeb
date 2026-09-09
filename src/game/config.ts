@@ -1,17 +1,16 @@
 import Phaser from 'phaser';
-import { BootScene } from './scenes/BootScene';
-
-export const GAME_WIDTH = 768;
-export const GAME_HEIGHT = 480;
+import { WORLD_WIDTH } from './core';
+import { GameScene } from './scenes/GameScene';
+import { GAME_HEIGHT } from './scenes/view';
 
 export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameConfig {
 	return {
 		type: Phaser.AUTO,
-		width: GAME_WIDTH,
+		width: WORLD_WIDTH,
 		height: GAME_HEIGHT,
 		parent,
 		backgroundColor: '#0b0e1a',
 		banner: false,
-		scene: [BootScene],
+		scene: [GameScene],
 	};
 }
