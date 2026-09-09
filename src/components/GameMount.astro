@@ -1,0 +1,23 @@
+---
+---
+
+<div id="game-root"></div>
+
+<script>
+	import { createGame, destroyGame } from '../game/main';
+
+	const el = document.getElementById('game-root');
+	if (el) createGame(el);
+
+	if (import.meta.hot) {
+		import.meta.hot.dispose(() => destroyGame());
+	}
+</script>
+
+<style>
+	#game-root {
+		width: 768px;
+		height: 480px;
+		margin: 24px auto;
+	}
+</style>
