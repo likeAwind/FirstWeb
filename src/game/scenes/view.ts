@@ -63,7 +63,28 @@ export const HP_LABEL_OFFSET_Y = 40;
 
 export const WAVE_TEXT_X = 12;
 export const WAVE_TEXT_Y = 10;
+export const SUN_TEXT_X = 12;
+export const SUN_TEXT_Y = 34;
+export const HINT_TEXT_X = 12;
+export const HINT_TEXT_Y = 58;
 export const STATUS_TEXT_SIZE = '36px';
+
+export const GRID_CELL_WIDTH = 56;
+export const GRID_CELL_HEIGHT = 100;
+export const GRID_FILL_COLOR = 0x334155;
+export const GRID_FILL_ALPHA = 0.22;
+export const GRID_STROKE_COLOR = 0x94a3b8;
+export const HOVER_VALID_COLOR = 0x22c55e;
+export const HOVER_INVALID_COLOR = 0xef4444;
+export const CARD_FILL_COLOR = 0x1e293b;
+export const CARD_SELECTED_COLOR = 0x2563eb;
+export const BUTTON_FILL_COLOR = 0x1e293b;
+
+export const DEPTH_GRID = 1;
+export const DEPTH_SPRITE = 10;
+export const DEPTH_HP = 20;
+export const DEPTH_UI = 1000;
+export const DEPTH_STATUS = 1100;
 
 export function zombieViewSize(kind: ZombieKind): { width: number; height: number } {
 	if (kind === 'fat') {

@@ -25,9 +25,13 @@ export function stepExistingZombies(world: WorldState, dt: number): void {
 		if (plant) {
 			const contactX = plant.x - ZOMBIE_CONTACT_DISTANCE;
 			const nextX = zombie.x + zombie.speed * dt;
+			const alreadyInsideContact = zombie.x >= contactX;
 
-			if (zombie.x >= contactX || nextX >= contactX) {
-				zombie.x = contactX;
+			if (alreadyInsideContact || nextX >= contactX) {
+				if (!alreadyInsideContact) {
+					zombie.x = contactX;
+				}
+
 				if (zombie.attackCooldown <= 0 && plant.hp > 0) {
 					plant.hp -= zombie.attackDamage;
 					zombie.attackCooldown = zombie.attackInterval;

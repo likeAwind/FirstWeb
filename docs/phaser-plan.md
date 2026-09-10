@@ -1,262 +1,247 @@
-# MVP-5 Plan：动态 Wave + 两种 Zombie + 攻击植物 + 胜负
+# MVP-6 Plan：布置 + 网格 + 阳光 + 准备阶段 + Restart
 
 先不要执行代码。等明确回复「批准执行」后再改。
 
-一次做完第一版关卡循环：动态 spawn、basic/fat、僵尸停下来打植物、植物真死 + death 动画、Victory / Game Over。不生成、不修改 PNG。fat 复用 basic 素材，只在 View 放大。
+把自动演示关卡改成可操作塔防：选卡片 → 花阳光点格种植 → 开始战斗 → 战斗中攒阳光补种 → 胜负后重新开始。不生成、不修改 PNG。不新依赖、不 Physics、不用 Phaser Timer 当经济/Wave 钟。
 
 ---
 
-## 0. 当前真实基线（与 prompt 的差异）
+## 0. 当前真实基线
 
-已读代码。和 prompt 描述一致的部分：Projectile 下一帧才飞、扫掠命中才扣僵尸 HP、植物 idle/attack、僵尸 walk + 逻辑死后播 die。
+已读代码。MVP-5 **已在本分支落地**，与 prompt 描述基本一致。
 
-**仍是固定开局，不是 Wave：**
+**Git（只记录，Plan 阶段不 commit/push）：** `game-phaser4-mvp` 相对 origin **ahead 1**（`7db426a MVP5`）。工作树干净。未 push 不等于代码缺失。
 
-- `createInitialWorld()` 仍创建 3 株植物 + **3 只僵尸**（`zombie-${lane}`）
-- `GameScene.create()` **一次性**创建全部僵尸 Sprite / HP Text
-- `destroyMissingZombieViews()` 只处理死亡，不创建新 id
-- `stepWorld`：僵尸无脑右移 → 已有豌豆步进 → 过滤死僵尸/过期豌豆 → `applyPlantAttacks` spawn
-- `PlantState.hp` 已有，但 **从未被扣**；`PLANT_HP = 3`
-- `pea-shooter/die.png` 存在，**未 preload / 未 play**
-- 无 `kind`、无 Wave、无 `gameStatus`
+**WorldState 现有字段：** `plants`、`zombies`、`projectiles`、`nextProjectileId`、`nextZombieId`、`gameStatus: 'playing'|'victory'|'game-over'`、`waveIndex`、`waveElapsed`、`nextSpawnIndex`。无 `sun`、无 `nextPlantId`、无 `preparing`。
 
-Plan 阶段不改代码；执行时按下面替换，不保留开局 3 僵尸。
+**植物：** `createInitialWorld()` 仍固定 3 株（`plant-${lane}`，x=`PLANT_X=688`，HP=5）。`GameScene.create()` 一次性建 Sprite/HP；update 里只有 `destroyMissingPlantViews` + `syncLivePlantHp`，**不能动态创建新植物 View**。
 
-素材已在 `public/game/**`（idle/attack/die、pea-fly、zombie/basic walk+die）。执行时再核对像素；不符则停。不恢复旧 `/game/zombie/walk.png`。
+**stepWorld：** 非 playing 则 return → 僵尸走/打 → 清死植物 → reachedEnd 则 GO 并清空豌豆 → 豌豆步进 → 清死尸/过期豌豆 → `applyPlantAttacks`（已按每株独立 cooldown/`findTarget`）→ `stepWaves`。
+
+**已可复用、预计不改：** `findBlockingPlant`（同 lane、前方最近，即最小 x）、`applyPlantAttacks` 全数组循环、僵尸/豌豆动态 View、植物 death（先出 Map 再播 die；attack complete 只回 idle）。
+
+`GameScene.ts` 约 352 行。本阶段会加 Grid/Card/Pointer/HUD/按钮，继续全塞会难读 → **新增轻量 `placementView.ts`**（格子几何、命中、hover 色），不建 Manager。
 
 ---
 
-## 1. 数据与常量
+## 1. 状态与配置
 
-**`ZombieKind = 'basic' | 'fat'`**
+**`GameStatus` 增加 `'preparing'`。** 初始 `preparing`。`stepWorld` 仅 `playing` 推进；preparing / victory / game-over 都 return（与现在「非 playing 就停」兼容，只需初始值改掉）。
 
-配置表（core，Scene 不写规则数值）：
+**`PlantKind = 'pea-shooter'`**（卡片/花费已需要 kind，不是空字段）。
+
+**PlantState 新增：** `kind`、`columnIndex`。保留 id/lane/x/hp/攻击三字段。x **只**来自网格常量。
+
+**WorldState 新增：** `nextPlantId`、`sun`、`sunIncomeElapsed`。`createInitialWorld()`：`plants=[]`，`zombies=[]`，`projectiles=[]`，三个 nextId=1，`gameStatus='preparing'`，`sun=STARTING_SUN`，`sunIncomeElapsed=0`，Wave runtime 仍从 0。
+
+id：`plant-${nextPlantId++}`。禁止 Date/random/DOM。
+
+**唯一植物配置（删除 `PLANT_HP` / `PLANT_ATTACK_DAMAGE` / `PLANT_ATTACK_INTERVAL`）：**
 
 ```ts
-const ZOMBIE_CONFIG = {
-  basic: { hp: 6, speed: 48, attackDamage: 1, attackInterval: 1 },
-  fat:   { hp: 16, speed: 30, attackDamage: 1, attackInterval: 1.5 },
+PLANT_CONFIG = {
+  'pea-shooter': { hp: 5, attackDamage: 1, attackInterval: 1, cost: 100 },
 };
 ```
 
-删除单独的 `ZOMBIE_HP` / `ZOMBIE_SPEED`，避免两套真相。植物 DPS≈1。basic 走到接触约 `588/48≈12.3s`，6 HP 单独走不到植物前。fat 约 `19.6s`。
-
-**Wave 3 lane1（结构不变：0s fat + 5s basic）推演：** basic 更快，约 t=13.3s 在 x≈468 追上 fat，并因更靠右吃满豌豆。追上前 fat 大约挨 13 发。
-
-- fat HP **20**：追上后仍约 7～8 HP，basic 挡枪期间 fat 贴脸，残余足够打完植物 5 血 → **默认容易 Game Over**（否决）。
-- fat HP **16**：追上时约 3 HP，随后 basic 先贴脸打掉植物 1～2 点；fat 再接手打 1～2 下后被点掉。植物常掉到 1～3，fat 仍有较高概率真正接触，**整局偏 Victory**。
-
-执行时若 fat 经常死在接触前，只把 HP 微增到 17，不要加回 20。
-
-**ZombieState 新增：** `kind`、`attackDamage`、`attackInterval`、`attackCooldown`。保留 `reachedEnd`。
-
-**不要** `targetPlantId` / `isAttacking` / `state`：每帧用 `findBlockingPlant` + 接触距离即可推导。
-
-**WorldState 新增（扁平，不另套状态机）：**
+**网格（确认可用，不改数值）：**
 
 ```ts
-gameStatus: 'playing' | 'victory' | 'game-over'
-waveIndex: number        // 0-based
-waveElapsed: number
-nextSpawnIndex: number
-nextZombieId: number
+PLANT_COLUMN_COUNT = 5
+PLANT_GRID_XS = [448, 508, 568, 628, 688]  // 间距 60；末列 = 旧 PLANT_X
 ```
 
-已有 `nextProjectileId`。`createInitialWorld()`：`zombies = []`，`projectiles = []`，`nextZombieId = 1`，`waveIndex = 0`，`waveElapsed = 0`，`nextSpawnIndex = 0`，`gameStatus = 'playing'`。仍创建 3 株植物。
+`PLANT_X` 改为 `PLANT_GRID_XS[4]` 的别名（728 终点仍在最右植物右侧）。Zombie 出生 68，最左列 448 明显更险，符合多层防线。
 
-id：`zombie-${nextZombieId++}`（`zombie-1`…）。kind 在字段里，不写进 id。禁止 Date/random/DOM。
+**经济：** `STARTING_SUN=300`，`SUN_INCOME_AMOUNT=25`，`SUN_INCOME_INTERVAL=3`。无上限。preparing 不产阳光（否则无限等，测不了开局 300）。terminal 也不产。
 
-**其它常量：** `ZOMBIE_CONTACT_DISTANCE = 32`，`PLANT_HP = 5`（方便看掉血，又不会被一口秒）。植物攻击数值不变。
+ZOMBIE_CONFIG / Wave 表 **保持 MVP-5 数值**。
 
 ---
 
-## 2. Wave 表（固定 TS，约 45s）
+## 2. Core API（Scene 不改 sun/plants/status）
+
+新增 `src/game/core/plants.ts`：
 
 ```ts
-interface ZombieSpawnDefinition { at: number; lane: LaneId; kind: ZombieKind }
-interface WaveDefinition { spawns: ZombieSpawnDefinition[] }
+isPlantCellOccupied(world, lane, columnIndex): boolean
+  // 活植物同 lane + 同 columnIndex。不用 Sprite 判断。
+
+validatePlacement(world, kind, lane, columnIndex): PlacePlantResult | 'ok'
+  // 1 status 须 preparing|playing
+  // 2 lane 0..2，column 0..4
+  // 3 未占用
+  // 4 sun >= cost
+
+canPlacePlant(...): boolean  // hover 用，内部走 validate，不复制规则
+
+placePlant(world, kind, lane, columnIndex): PlacePlantResult
+  // 'placed' | 'invalid-status' | 'invalid-cell' | 'occupied' | 'insufficient-sun'
+  // 成功：扣 cost，push Plant（config 数值，cooldown=0，x=PLANT_GRID_XS[column]）
+
+startBattle(world): boolean
+  // 仅 preparing 且 plants.length>=1 → playing，true；否则 false，不改状态
 ```
 
-`WAVES` 长度 3 → `WAVE_COUNT`。时钟只用 core `dt`，不用 Phaser Timer。
+不强制每 lane 一株。0 株点开始：core 拒绝，Scene 提示「请先种至少一株植物」。
 
-| Wave | at(s) | lane | kind | 目的 |
-|---|---|---|---|---|
-| 1 | 0 / 1.5 / 3 | 0 / 1 / 2 | basic | 动态 spawn，三路都有 |
-| 2 | 0, 0.3, 0.6 | 0,1,2 | basic | 同 lane 第二只 |
-| 2 | 3, 3.3, 3.6 | 0,1,2 | basic | 同上 |
-| 3 | 0 | 1 | fat | 压力路，争取贴脸 |
-| 3 | 1 / 2 | 0 / 2 | basic | 边路 |
-| 3 | 5 | 1 | basic | 同路追上 fat，帮挡豌豆 |
-| 3 | 6 / 7 | 0 / 2 | basic | 边路第二只 |
+**`stepSunIncome`：** 同放在 `plants.ts`（约十几行，不单开 economy.ts）。仅 playing：`elapsed += dt`，`while >= interval: sun += 25; elapsed -= interval`。禁止 setInterval / Phaser Timer。
 
-默认偏 Victory：边路 basic 仍会被 1 DPS 清掉；lane 1 用 fat HP 16 限制「basic 挡枪」红利，植物应明显掉血甚至接近死亡，但较少被推倒后再破门。Game Over 仍用临时 `PLANT_HP=1` 验证，不靠默认关卡常输。
-
-预计：Wave1 ~11s，Wave2 ~12s，Wave3 ~22s，合计约 **45s**（加 Wave 切换瞬间）。符合 30～60s。
-
-推进：当前 Wave 计划 spawn 全部完成 **且** `zombies.length === 0` → 有下一波则 `waveIndex++`、`waveElapsed=0`、`nextSpawnIndex=0`；已是最后一波 → `gameStatus = 'victory'`。Victory **不等** death Sprite。
-
-**终局豌豆：** Victory **与** Game Over 都 `projectiles = []`。core 停止推进后场上不应留下悬停豌豆。
+玩家输入发生在两次 `stepWorld` 之间。playing 中新植物 **下一帧** 进入 `applyPlantAttacks`。不加 justPlaced。
 
 ---
 
-## 3. 僵尸移动 / 接触 / 攻击
-
-`findBlockingPlant(zombie, plants)`：同 lane、`hp > 0`、`plant.x >= zombie.x`，取 **最小 plant.x**（前方最近）。不写 `plants[lane]`。
-
-`contactX = plant.x - 32`。本帧若 `x + speed*dt` 会越过 contactX → `x = contactX`（防穿模）。已在接触：不改 x，结算攻击。
-
-无 blocker：照常 `x += speed*dt`；`x >= END_X` → clamp 并 `reachedEnd = true`。
-
-攻击：`attackCooldown = max(0, cooldown - dt)`；接触且 cooldown≤0 → `plant.hp -= damage`，`cooldown = interval`。第一次接触立即打。无接触时 cooldown 可降到 0。Scene 禁止改 HP。
-
-**同帧多僵尸：** 按 `world.zombies` 数组顺序。打到 `hp<=0` 后，**本帧杀手不继续移动**；后面的僵尸 `findBlockingPlant` 已忽略该植物，可移动、不可再打它。僵尸步进结束后立刻从数组去掉死植物，再检查破门；未 GO 的下一帧全体恢复走路。不引入锁/队列。
-
-无僵尸互挡（basic 可以穿过 fat 成为更靠右的目标；`findTarget` 仍打 max x）。
-
----
-
-## 4. `stepWorld` 最终顺序
+## 3. `stepWorld` 最终顺序
 
 ```
-if (gameStatus !== 'playing') return
+if (gameStatus !== 'playing') return   // preparing 完全不走 Wave/尸/豆/阳光
 
-1. 步进本帧开始前已有的 Zombie（挡/走/打）
-2. 先清掉本阶段打到 hp<=0 的 Plant
-3. 任一 reachedEnd → gameStatus='game-over'，projectiles = []，return
-   （破门判定仍在豌豆步进之前，避免同帧被豌豆救回来）
-4. 步进本帧已有 Projectile（MVP-4：移、扫掠、扣僵尸 HP、标记）
-5. 清理：zombies hp>0、过期豌豆
-6. 仍存活植物 cooldown / findTarget / spawn 新豌豆（当帧不飞）
-7. waveElapsed += dt；到期则 spawn 新僵尸（当帧不走、不打）
-8. 本 Wave spawn 完且 zombies.length===0：
-     还有下一 Wave → 切换
-     否则 → victory，projectiles = []
+1. stepSunIncome
+2. stepExistingZombies（挡最近植物 / 走 / 打）
+3. filter hp<=0 Plant
+4. reachedEnd → game-over，projectiles=[]，return
+5. stepExistingProjectiles
+6. filter 死尸 / 过期豌豆
+7. applyPlantAttacks（所有仍活植物，各自 cooldown）
+8. stepWaves
 ```
 
-要点：
-
-- 同帧「植物被打死 + 另一只僵尸破门」：步骤 2 已把死亡植物移出 `world.plants`，再 GO。Scene 能播 plant death，不会卡着 hp<=0 的幽灵植物。
-- 新僵尸 / 新豌豆都靠「先步进旧实体，再 spawn」跳过当帧，**不加** justSpawned
-- 最后一只僵尸被豌豆打死：先清僵尸再开火 → `findTarget` 为空 → **不会多打一发**；再判 Victory
-- death Sprite 不参与胜负
-- Victory / Game Over 都清空豌豆，避免 freeze 后豆子停在半空
+同 lane 多植物：blocker 已是最小 x，先打前排；死后下一帧走向下一株。combat 已按株循环，**预计不改**。新植物开火仍当帧不飞豌豆（spawn 在步进之后）。
 
 ---
 
-## 5. View
+## 4. View / UI
 
-**动态僵尸（必须，类似豌豆 Map）：** `create()` 不再创建僵尸。`syncZombieViews()`：新 id → Sprite（basic 64×64 / fat **80×80**，同 basic 贴图，无 tint）+ walk + HP Text；仍在 → 同步 x/HP；消失 → 移出 Map、HP destroy、播 die、complete 才 `sprite.destroy()`。不每帧重建。不写通用 ECS。
+**动态植物：** 删掉 create() 里一次性种植循环。`syncPlantViews()` 对齐僵尸 Map：新 id → 按 `plant.kind` 轻量 switch 取 pea-shooter idle 贴图（现在只有一分支，但必须走 kind）→ idle + HP Text；仍在 → 同步 HP；消失 → 出 Map、毁 HP、播 die、complete destroy。保留「先出 Map 所以残留豌豆不能 restart attack」。
 
-**植物 HP：** `plantHpViews`。植物仍开局创建（本阶段不动态种植物）。缺失 id：与僵尸相同残留模式——先从 Map 删、HP Text destroy，再播 `pea-shooter-die`（8 帧、48×48、10fps、repeat 0），complete 只 destroy Sprite。
+**Grid：** 15 个描边 Rectangle（约 56×100，中心 `(PLANT_GRID_XS[col], laneToY(lane))`），低 depth、半透明，不挡 Sprite。逻辑 x 仍只来自常量。
 
-**避免 death 被切回 idle：**
+**Pointer：** Scene 把像素映射成 `{lane, columnIndex}`（格子 interactive 或几何命中），再只调 `placePlant`。不把 pointer.x 当 `plant.x`。点在格子外 / UI 上：不种。
 
-- 进 death 前就从 `plantViews` 删除 → 残留豌豆的 `playPlantAttack(sourcePlantId)` 找不到，不会 restart attack
-- 现有稳定监听保持：`complete && key===attack → idle`。die 的 complete key 不是 attack，不会回 idle
-- death 用 `once(COMPLETE_KEY + die → destroy)` + `play(die)`，只播一次
-- 不为动画推迟 core 删除；已飞出的豌豆不回收
+**选中态（仅 Scene）：** `selectedPlantKind: PlantKind | null`。点卡片选中；再点同一卡片或 **ESC** 取消。种成功 → `null`。不进 WorldState。
 
-**UI：** 仅 Text。上方 `Wave ${waveIndex+1} / ${WAVE_COUNT}`；结束时居中「游戏结束」或「胜利」。只读 core。无按钮/重开/血条。
+**Hover：** 已选中时，合法（`canPlacePlant`）绿高亮，非法（占用/阳光不足/terminal）红高亮。View 不写第二套 cost 规则。
 
-**HMR：** `anims.exists`；create 时 clear Maps。
+**卡片：** Rectangle+Text「豌豆射手 / 100 阳光」。cost 文案读 `PLANT_CONFIG`（经 core 导出），Scene 不写死 100。
+
+**HUD：** `阳光：${world.sun}`；preparing 显示「准备阶段」，playing 起 `Wave n / 3`；hint 一条 Text，下次操作覆盖，不用 Timer 消失。
+
+**开始战斗：** 仅 preparing 可见。点 `startBattle`；成功隐藏按钮 + hint「战斗开始」；失败 hint 如上。Phaser Text/Rectangle，不用 HTML。
+
+**重新开始：** 仅 victory/game-over 可见。`this.scene.restart()` → `create()` + `createInitialWorld()`。不手写 resetWorld。create 开头：Maps clear、`selectedPlantKind=null`、hint 清空。死亡残留是 Scene 子对象，restart 会拆掉。
+
+**Listener：** 只用 `this.input` / `this.input.keyboard`（Scene 自带，shutdown 会清）。禁止 window 全局。按钮 `setInteractive`。`anims.exists` 防 HMR 重复动画。UI depth 高于格子，避免点按钮误种。
+
+布局：卡片与开始键靠左（x 小），格子在 448–688，互不重叠。
 
 ---
 
-## 6. 文件
+## 5. 文件
 
 **新增**
 
-- `src/game/core/waves.ts` — 表、按 elapsed spawn、切 Wave / Victory
-- `src/game/core/zombies.ts` — `findBlockingPlant` + 移动/夹紧/攻击（避免 `update.ts` 膨胀）
+- `src/game/core/plants.ts` — occupancy / validate / place / startBattle / stepSunIncome
+- `src/game/scenes/placementView.ts` — 格子尺寸、命中、hover 色、kind→贴图入口
 
 **修改**
 
-- `types.ts` / `constants.ts` / `world.ts` / `combat.ts`（植物仍只打活僵尸；死植物不在数组里自然不开火）
-- `projectiles.ts` — 命中逻辑保持；不必为胜负改
-- `update.ts` — 编排新顺序
-- `index.ts` — 导出 kind、WAVE_COUNT、gameStatus 等 Scene 需要的只读量
-- `view.ts` — plant die 常量、fat 80、UI 字号位置
-- `GameScene.ts` — preload die；动态僵尸；植物 HP + death；Wave/结果 Text
+- `types.ts` / `constants.ts` / `world.ts` / `update.ts` / `index.ts`
+- `view.ts` — 阳光/按钮/格子颜色与 depth
+- `GameScene.ts` — 动态植物、输入、HUD、Start/Restart
 
-**不改：** `public/**`、`main.ts`、`config.ts`、Astro、`package.json`、**执行阶段不改** `docs/phaser-plan.md`。不新依赖、不 Physics。
+**预计不改：** `combat.ts`、`projectiles.ts`、`zombies.ts`、`waves.ts`、`main.ts`、`config.ts`、`public/**`、package、**执行时不改 Plan**。
+
+若 `applyPlantAttacks` 因 kind 要选子弹类型再动 combat；本阶段只有豌豆，应不动。
 
 ---
 
-## 7. 验证
+## 6. 验证（无 Debug 改常量）
 
-默认试玩：三波、动态僵尸、fat 更大更肉、车道多尸、植物 HP 数字、豌豆仍命中才扣尸 HP、大概率 Victory。
+**准备：** 无植物、阳光 300、Wave 不走、阳光不涨、3×5 格、卡片 100、开始键、「准备阶段」。
 
-**Game Over（执行完立刻 restore，Diff 不留测试）：** 临时 `PLANT_HP = 1` 打一局到破门，确认 freeze 与文案，再改回 5。不留按钮/作弊键/query。
+**种植：** 选卡 → 合法格种成功 -100、自动取消选择；占用/阳光不足不扣；ESC 取消；终局不能种。
+
+**开始：** 0 株拒绝；≥1 株进入 playing，此后才 spawn。
+
+**基线胜利：** 三路最右列（column 4，x=688）多种 3 株，300→0，Start。应接近 MVP-5。战斗中约 12s 再攒 100 补一株。
+
+**自然 Game Over：** 只种 1 路 → 空路僵尸破门。不改 `PLANT_HP`。
+
+**Restart：** 回 preparing、阳光 300、空世界、id 从 1、无幽灵 Sprite/监听。
 
 `npm.cmd run build`；core 无 Phaser；`/` 不变。
 
 ---
 
-## 8. 风险
+## 7. 风险
 
 | 风险 | 应对 |
 |---|---|
-| 开局仍 3 僵尸 | `createInitialWorld` 空数组 + Scene 改 sync |
-| fat 被 basic 挡枪后必杀植物 | fat HP 16，不改 Wave 结构；过弱再加到 17 |
-| 破门同帧植物未从数组删除 | 先 filter 死植物，再查 reachedEnd / GO |
-| 破门同帧被豌豆救 | GO 在豌豆步进之前，清空豌豆后 return |
-| freeze 后豌豆悬停 | Victory 与 Game Over 都 `projectiles = []` |
-| 最后一尸死后多种一发 | 先清理再植物开火 |
-| attack complete 打断 death | 先出 Map；complete 只对 attack 回 idle |
-| 幽灵 HP/Sprite | 与僵尸同一套 Map 删除 |
-| 植物死了豌豆被清 | 不按 sourcePlantId 回收 |
-| Phaser Timer 当 Wave 钟 | 禁止，只用 dt |
-| 误做 Restart/菜单 | 不做 |
+| 开局仍 3 株 / playing | world 空数组 + preparing |
+| Scene 直接扣阳光 | 只走 placePlant |
+| 阳光 preparing 刷爆 | income 仅 playing |
+| 点 HUD 误种 | UI 与格子分区 + 更高 depth |
+| restart 双监听 | 只用 Scene input |
+| death 被切回 idle | 先出 Map，complete 仅 attack |
+| 同 lane 穿植物 | 回归 findBlockingPlant 最小 x |
+| 两套植物数值 | 删旧 PLANT_HP 等 |
 
-不做：新植物、放置、阳光、fat 正式图、僵尸攻击动画、爆炸、音效、随机波、无限、暂停、重开、存档、ECS。
+不做：第二种植物、向日葵、掉落阳光、卡片 CD、铲子、音效、暂停、随机波、Physics。
 
 ---
 
-## 9. 对 prompt 35 问的直接回答
+## 8. 对 prompt 42 问
 
-1. 现序：移尸 → 豌豆 → 滤尸/豌豆 → 植物开火。  
-2. 僵尸：`world.ts` 开局 3 只；View 在 `create()` 一次做完。  
-3. 开局空数组 + Wave spawn + `syncZombieViews`。  
-4. `'basic' \| 'fat'`。  
-5. basic 6/48/1/1；fat **16**/30/1/1.5。  
-6. 同贴图，80×80，不 tint。  
-7. kind + 三套攻击字段。  
-8. 不要 targetPlantId。  
-9. 不要 isAttacking。  
-10. 同 lane、活、在前方、最近。  
-11. 将 x 夹到 contactX。  
-12. 每帧减；接触且 ≤0 立刻打。  
-13. 数组顺序；死后本帧后面的不再打、可走。  
-14. 植物 HP=5。  
-15. 僵尸攻击之后、reachedEnd / GO 之前先 filter 死植物；死僵尸仍在豌豆步进之后 filter。  
-16. 出 core → 出 Map → 删 HP → 播 die → complete destroy。  
-17. 出 Map + complete 仅 attack 回 idle。  
-18. sync 见新 id 则创建。  
-19. 沿用现有 walk/die + once complete。  
-20. `{ spawns: {at,lane,kind}[] }`。  
-21. 扁平挂在 WorldState。  
-22. `zombie-${nextZombieId++}`。  
-23. 见第 2 节表。  
-24. ~45s。  
-25. 边路可清；lane1 fat 16 + 5s basic，接触并掉血，较少推倒破门。  
-26. 僵尸步进 → 清死植物 → 再查破门；GO 在豌豆前。  
-27. spawn 之后：末波 spawn 完且尸空。  
-28. Victory **和** Game Over 都清空残余豌豆。  
-29. 非 playing 则 `stepWorld` 直接 return。  
-30. Text 读 waveIndex / WAVE_COUNT / gameStatus。  
-31. 要 waves.ts。  
-32. 要 zombies.ts。  
-33. public、main、config、Astro、package、Plan（执行时）。  
-34. 临时 PLANT_HP=1，验完改回。  
-35. 见第 8 节。
+1. 见第 0 节 WorldState。  
+2. world 固定 3 株 + create() 一次建 View。  
+3. 空 plants + placePlant + syncPlantViews。  
+4. `'pea-shooter'`。  
+5. kind + columnIndex。  
+6. hp/damage/interval/cost。  
+7. **删除** 旧三项。  
+8. `[448,508,568,628,688]`。  
+9. **存** columnIndex。  
+10. 同 lane+column 的活植物。  
+11. `placePlant(world, kind, lane, columnIndex)`。  
+12. 五值 union。  
+13. `plant-${nextPlantId++}`。  
+14. 300。  
+15. +25 / 3s。  
+16. 否则无限等，开局经济无意义。  
+17. 联合类型加 preparing，初始 preparing。  
+18. `plants.ts` 的 `startBattle`。  
+19. plants.length===0 → false。  
+20. stepWorld 直接 return。  
+21. 见第 3 节。  
+22. 格子中心命中 → lane+column，再 placePlant。  
+23. 只是手里选了什么，不是世界真相。  
+24. hover 调 `canPlacePlant`。  
+25. selected=null，去高亮。  
+26. sync 见新 id 则按 kind 建 Sprite+HP。  
+27. 与 MVP-5 相同残留 die。  
+28. 最小 x 先挡。  
+29. combat 已按株开火，预计不改。  
+30. 每帧读 world.sun。  
+31. preparing 文案 / 其后 Wave n/3。  
+32. 仅 preparing 的 Phaser 按钮 → startBattle。  
+33. 仅终局按钮 → scene.restart()。  
+34. 足够：create 重建 world 与 Maps。  
+35. Scene-owned input；anims.exists。  
+36. 只种一路。  
+37. 三路最右列花光 300。  
+38. 要 plants.ts。  
+39. 不要 economy.ts。  
+40. 要 placementView.ts。  
+41. combat/projectiles/zombies/waves/main/config/public。  
+42. 见第 7 节。
 
 ---
 
-## 10. 批准后步骤
+## 9. 批准后步骤
 
-1. 核对 PNG 尺寸；不符则停。  
-2. types / constants / world。  
-3. zombies.ts + waves.ts；改 update 顺序。  
-4. view + GameScene。  
-5. 试玩 Victory；临时 PLANT_HP=1 验 GO 后改回。  
+1. types / constants / world。  
+2. plants.ts + 改 update 顺序。  
+3. placementView + view 常量。  
+4. GameScene：动态植物、格子、卡片、阳光、Start/Restart、ESC。  
+5. 手测准备/种植/开始/补种/一路 GO/三路最右 Victory/Restart。  
 6. build；确认 core 无 Phaser。

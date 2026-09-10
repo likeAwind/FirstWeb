@@ -1,4 +1,5 @@
 import { applyPlantAttacks } from './combat';
+import { stepSunIncome } from './plants';
 import { stepExistingProjectiles } from './projectiles';
 import type { WorldState } from './types';
 import { stepWaves } from './waves';
@@ -7,6 +8,7 @@ import { stepExistingZombies } from './zombies';
 export function stepWorld(world: WorldState, dt: number): void {
 	if (world.gameStatus !== 'playing') return;
 
+	stepSunIncome(world, dt);
 	stepExistingZombies(world, dt);
 
 	world.plants = world.plants.filter((plant) => plant.hp > 0);
