@@ -5,6 +5,9 @@ export interface PlantState {
 	lane: LaneId;
 	x: number;
 	hp: number;
+	attackDamage: number;
+	attackInterval: number;
+	attackCooldown: number;
 }
 
 export interface ZombieState {

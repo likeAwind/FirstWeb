@@ -8,6 +8,8 @@ export {
 	ZOMBIE_SPEED,
 	PLANT_HP,
 	ZOMBIE_HP,
+	PLANT_ATTACK_DAMAGE,
+	PLANT_ATTACK_INTERVAL,
 } from './constants';
 export { createInitialWorld } from './world';
 export { stepWorld } from './update';

@@ -6,6 +6,8 @@ import {
 	ZOMBIE_SPEED,
 	PLANT_HP,
 	ZOMBIE_HP,
+	PLANT_ATTACK_DAMAGE,
+	PLANT_ATTACK_INTERVAL,
 } from './constants';
 
 export function createInitialWorld(): WorldState {
@@ -19,6 +21,9 @@ export function createInitialWorld(): WorldState {
 			lane: laneId,
 			x: PLANT_X,
 			hp: PLANT_HP,
+			attackDamage: PLANT_ATTACK_DAMAGE,
+			attackInterval: PLANT_ATTACK_INTERVAL,
+			attackCooldown: 0,
 		});
 		zombies.push({
 			id: `zombie-${laneId}`,

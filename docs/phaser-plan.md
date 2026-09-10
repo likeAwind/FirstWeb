@@ -1,179 +1,361 @@
-# MVP-1 方向修订版 Plan：植物在右，僵尸从左向右走
+# MVP-2 Plan：同路检测 + 单体自动攻击 + HP + 死亡
 
-先不要执行代码。等明确批准后再改。
+先不要执行代码。等明确回复「批准执行」后再改。
 
-这不是只挪 Phaser 矩形，而是同步改 **core 里的游戏规则**。不增加攻击、碰撞、Game Over、新依赖。lane / y / 显示尺寸架构不变。
+在 MVP-1 方向修订（植物在右、僵尸左→右）上加入最小战斗闭环。攻击是 **core 里的直接伤害**，不引入子弹、碰撞、物理、Game Over。
 
 ---
 
-## 当前真实代码（改之前）
+## 1. 对当前 MVP-1 真实架构的理解
 
-| 规则 | 现况 |
+| 层 | 现状 |
 |---|---|
-| 植物 | `PLANT_X = 80`（左侧） |
-| 僵尸出生 | `ZOMBIE_START_X = 700`（右侧） |
-| 移动 | `stepWorld` 里 `x -= speed * dt`（向左） |
-| 终点 | `LEFT_BOUND = 40`；`x <= LEFT_BOUND` 时夹紧并 `reachedEnd = true` |
+| core | 纯 TS。`WorldState` 含 3 植物 + 3 僵尸。`stepWorld` 只做 `x += speed * dt`，到 `END_X` 夹紧并 `reachedEnd`。已有 `hp`，但不扣血。 |
+| 常量 | `PLANT_X = 688`，`ZOMBIE_START_X = 68`，`END_X = 728`，`ZOMBIE_SPEED = 48`，`PLANT_HP/ZOMBIE_HP = 3` |
+| Phaser | `GameScene`：`dt = min(delta/1000, 0.05)` → `stepWorld` → `rect.x = zombie.x`。`Map<id, Rectangle>` 只在 create 建一次。 |
+| 显示 | `view.ts`：矩形尺寸、颜色、`laneToY`、`GAME_HEIGHT`。core 无像素 y。 |
 
-显示层已经只做 `rect.x = zombie.x`，不知道方向。`GameScene` / `view.ts` 不读 `PLANT_X` / `ZOMBIE_START_X` / `LEFT_BOUND`。
-
----
-
-## 新规则
-
-- 植物在右侧
-- 僵尸从左侧出生
-- 僵尸从左向右移动
-- 到达右侧终点后 `reachedEnd = true`
-
-镜像当前间距，不另发明一套距离：
-
-| 常量 | 旧值 | 新值 | 说明 |
-|---|---|---|---|
-| `PLANT_X` | 80 | **688**（`WORLD_WIDTH - 80`） | 靠右，与旧左侧对称 |
-| `ZOMBIE_START_X` | 700 | **68**（`WORLD_WIDTH - 700`） | 靠左出生 |
-| 终点 | `LEFT_BOUND = 40` | **`END_X = 728`**（`WORLD_WIDTH - 40`） | 在植物更右侧，僵尸仍会先经过植物再到终点 |
-
-`WORLD_WIDTH` 仍为 768。相对关系与现在相同，只是左右对调：僵尸穿过植物，再到「房子」线。
+方向已经对：规则在 core，Scene 只同步。MVP-2 要把「只移动」扩成「移动 + 选目标 + 冷却 + 扣血 + 死亡」，**伤害不得写进 Scene**。
 
 ---
 
-## `LEFT_BOUND` 是否改名为 `END_X`
+## 2. 推荐的战斗规则
 
-**建议改名为 `END_X`，采用这个名字。**
+### 同路检测
 
-- `LEFT_BOUND` 在新方向下是错的（终点在右边）。
-- `RIGHT_BOUND` 会再绑死方向，以后若再改朝向又要改名。
-- `END_X` 中性，和已有的 `reachedEnd` 对应。
-- 判定改为 `zombie.x >= END_X`，然后 `zombie.x = END_X`。
+只攻击 `plant.lane === zombie.lane` 且仍存活（`hp > 0`）的僵尸。  
+**禁止用 Phaser 的 y 判断目标。**
 
-不建议用 `HOUSE_X` / `GOAL_X`：本阶段没有房子或胜利语义，名字过重。
+### 攻击方向
 
----
-
-## Phaser Scene 要不要知道方向
-
-**不必。** `GameScene` 继续：
+当前僵尸左→右、植物在右。有效目标再加：
 
 ```ts
-const dt = Math.min(delta / 1000, 0.05);
-stepWorld(this.world, dt);
-rect.x = zombie.x;
+zombie.x < plant.x
 ```
 
-create 时植物/僵尸的 x 已来自 core 的 `PLANT_X` / `ZOMBIE_START_X`，换常量后初始位置会自动换边。  
-不要在 Scene 里写 `rect.x += speed`。
+只打还在植物左侧、正在靠近的僵尸。已越过植物（含 `reachedEnd`，其 x=728 > 688）不会被打。  
+不用 `<=`：重叠时不算「左侧」。
+
+### 攻击范围：采用方案 A（无限同路射程）
+
+**推荐 A：** 同路 + 在植物左侧即可攻击，不加 `ATTACK_RANGE`。
+
+原因：
+
+- 和典型 lane-defense（豌豆射手打整行前方）一致
+- 少一个常量，更好测：同路就打、跨路不打、越过植物不打
+- 仍是逻辑 `x`，不绑像素
+- 以后加子弹时再加 `ATTACK_RANGE`（`plant.x - zombie.x <= range`），选目标函数多一个条件即可
+
+本阶段不采用 B。若以后要「走进某距离才开火」，再把 `ATTACK_RANGE` 放进 **core 常量**，不放 view。
+
+### 时间单位
+
+core 全部用 **秒**（与现有 `dt`、`ZOMBIE_SPEED` 一致）。
+
+### 攻击间隔
+
+- `attackInterval`：两次攻击间隔（秒），常量例如 `1`
+- `attackCooldown`：距离下次可攻击的剩余秒数
+- 每帧：`attackCooldown = max(0, attackCooldown - dt)`
+- `cooldown <= 0` 且有合法目标 → 扣血，然后 `attackCooldown = attackInterval`
+- 没有目标时 cooldown 可降到 0 并保持 0（进入范围立刻能打），**不**无攻击也刷新间隔
+
+### 第一次攻击
+
+**有合法目标时立刻打第一下**（初始 `attackCooldown = 0`）。
+
+原因：验收时一眼能看到掉血；「等一整轮」容易误以为没打。怕出生即死，用 HP / 伤害 / 间隔调，不靠推迟第一击。
+
+建议数值（仍属规则，放 core）：
+
+| 常量 | 值 | 效果 |
+|---|---|---|
+| `PLANT_ATTACK_DAMAGE` | 1 | 每次 -1 HP |
+| `PLANT_ATTACK_INTERVAL` | 1 | 每秒 1 下 |
+| `ZOMBIE_HP` | 3 | 约 3 秒死亡（仍在左侧，能看清掉血和消失） |
+
+不改 `ZOMBIE_SPEED`。
+
+### 目标选择
+
+不要 `world.zombies[lane]`。过滤后取一个：
+
+1. 同一 `lane`
+2. `hp > 0`
+3. `zombie.x < plant.x`
+
+同 lane 多个时：**选 x 最大的**（离植物最近、最靠右的那个）。
+
+当前每路一只僵尸，这条规则仍然成立，以后多僵尸不用改选择函数。
+
+### HP 与死亡
+
+扣血只在 core：`target.hp -= plant.attackDamage`。  
+`hp <= 0` 即死亡。
+
+**死亡方案：B — 从 `world.zombies` 移除**（不采用长期留尸的 `dead: boolean`）。
+
+原因：
+
+- 死后自然不会移动、不会被选中，少一批 `if (dead)`
+- Scene 用「id 是否还在数组里」做 View 清理，和以后 spawn 新 id 一致
+- 不在遍历中 `splice`：所有植物打完后 `world.zombies = world.zombies.filter(z => z.hp > 0)`
+
+选目标时仍要跳过 `hp <= 0`（同一帧可能已被另一植物打死，本阶段每路一植物，但逻辑要正确）。
+
+不为 `ZombieState` 加 `dead`。`reachedEnd` 保留。
 
 ---
 
-## 实际需要修改的文件
+## 3. 文件拆分：方案 B（轻度）
 
-### 1. `src/game/core/constants.ts`
+**采用 B：** `update.ts` 编排，`combat.ts` 负责选目标与攻击。
 
-- `PLANT_X = 688`
-- `ZOMBIE_START_X = 68`
-- 删除 `LEFT_BOUND`，新增 `END_X = 728`
-- 其余不变：`LANE_COUNT`、`WORLD_WIDTH`、`ZOMBIE_SPEED`、HP
+不采用 A（全部塞进 `update.ts`）：战斗规则值得单独成文件，但只多 **一个** `combat.ts`。
 
-### 2. `src/game/core/update.ts`
+不引入 ECS、事件总线、DI、仓库、类继承树。
+
+```
+stepWorld
+  → 移动（update.ts）
+  → applyPlantAttacks（combat.ts）
+  → 过滤 hp <= 0（update.ts）
+```
+
+---
+
+## 4. 文件新增 / 修改 / 删除
+
+**新增**
+
+- `src/game/core/combat.ts` — `findTarget`、`applyPlantAttacks`
+
+**修改**
+
+- `src/game/core/types.ts` — `PlantState` 增加攻击字段
+- `src/game/core/constants.ts` — `PLANT_ATTACK_DAMAGE`、`PLANT_ATTACK_INTERVAL`
+- `src/game/core/world.ts` — 初始化攻击字段，`attackCooldown: 0`
+- `src/game/core/update.ts` — 移动 → 攻击 → 移除死者
+- `src/game/core/index.ts` — 导出新常量和需要的函数（至少 `stepWorld` 仍从这里出去）
+- `src/game/scenes/view.ts` — HP 文字颜色、相对矩形的 y 偏移（显示层）
+- `src/game/scenes/GameScene.ts` — HP Text 的 Map；同步文字；按缺失 id 销毁 View
+
+**不改**
+
+- `main.ts`、`config.ts`、`GameMount.astro`、`game.astro`、`Header.astro`、首页
+- `package.json`、`astro.config.mjs`、`tsconfig.json`
+- **执行阶段不要改** `docs/phaser-plan.md`
+
+**不删除文件。**
+
+---
+
+## 5. 每个文件职责
+
+| 文件 | 职责 |
+|---|---|
+| `types.ts` | 状态形状 |
+| `constants.ts` | 规则数字（含攻击伤害/间隔） |
+| `world.ts` | 初始 3+3 |
+| `combat.ts` | 纯函数：选目标、扣血、重置 cooldown |
+| `update.ts` | `stepWorld` 顺序：移动、战斗、清死者 |
+| `view.ts` | 矩形、颜色、`laneToY`、HP 文字样式 |
+| `GameScene.ts` | clamp dt、调 `stepWorld`、同步位置/HP 文字、销毁死亡 View |
+
+---
+
+## 6. core 数据模型变化
 
 ```ts
-zombie.x += zombie.speed * dt;
+interface PlantState {
+  id: string;
+  lane: LaneId;
+  x: number;
+  hp: number;              // 本阶段仍不扣植物血
+  attackDamage: number;
+  attackInterval: number;  // 秒
+  attackCooldown: number;  // 秒，剩余
+}
 
-if (zombie.x >= END_X) {
-  zombie.x = END_X;
-  zombie.reachedEnd = true;
+interface ZombieState {
+  id: string;
+  lane: LaneId;
+  x: number;
+  hp: number;
+  speed: number;
+  reachedEnd: boolean;
+  // 不加 dead
 }
 ```
 
-import 改为 `END_X`。不再使用 `x -=` 或 `LEFT_BOUND`。
-
-### 3. `src/game/core/index.ts`
-
-导出 `END_X`，不再导出 `LEFT_BOUND`。
-
-### 不需要改的文件
-
-| 文件 | 原因 |
-|---|---|
-| `core/types.ts` | `reachedEnd` 仍是 boolean，无方向字段 |
-| `core/world.ts` | 只引用 `PLANT_X` / `ZOMBIE_START_X`，改常量即可 |
-| `scenes/GameScene.ts` | 只同步 `rect.x = zombie.x` |
-| `scenes/view.ts` | 宽高、颜色、`laneToY`、`GAME_HEIGHT` 不变 |
-| `config.ts` / `main.ts` | 启动与画布不变 |
-| `GameMount.astro` / `game.astro` / `Header.astro` / 首页 | 网站壳不变 |
-| `package.json` | 不装新依赖 |
+`WorldState` 不变。`hp` 真实变化只发生在 `combat.ts`。
 
 ---
 
-## 每个文件修改什么（摘要）
-
-| 文件 | 改什么 |
-|---|---|
-| `constants.ts` | 右侧植物、左侧出生、`END_X` |
-| `update.ts` | `+=`，`x >= END_X` 时停下 |
-| `index.ts` | 导出名 `END_X` |
-
-core 仍禁止 Phaser / DOM。移动仍只允许发生在 `stepWorld()`。
-
----
-
-## 修改后的 core → Phaser 数据流
+## 7. `stepWorld` 每帧流程
 
 ```
-createInitialWorld()
-  plant.x = 688（右）
-  zombie.x = 68（左）
-        ↓
-GameScene.create()  →  按 state 建 Rectangle（只一次）
-        ↓ 每帧
-dt = min(delta/1000, 0.05)
-stepWorld: x += speed * dt；x >= END_X → 夹紧 + reachedEnd
-        ↓
-rect.x = zombie.x
+1. 移动：hp > 0 且未 reachedEnd 的僵尸 x += speed * dt，撞 END_X 则夹紧
+2. 植物攻击：每株 cooldown 减少；就绪则 findTarget；有目标则扣血并重置 cooldown
+3. 死亡：world.zombies = filter(hp > 0)
 ```
 
-显示层仍然不知道「向右」还是「向左」。
+考虑：
+
+- **本帧刚走进「左侧」**：先移动再攻击，能立刻被打
+- **已死**：本帧结束后移出数组；同帧后续植物因 `hp > 0` 选不到；下帧不移动
+- **多植物打同一僵尸**：按植物数组顺序依次结算；打死即 hp<=0，后面的植物选不到
+- **不在 for 里 splice**，只在最后 filter 赋回
+
+`dt` 仍由 Scene clamp 后传入。core 不做 clamp，也不用 Phaser timer。
 
 ---
 
-## 架构约束（沿用 MVP-1）
+## 8. 目标选择逻辑（`findTarget`）
 
-- `src/game/core/**` 纯 TypeScript，无 Phaser / DOM
-- 显示宽高、颜色、lane 像素 y 只在 `view.ts` / `GameScene`
-- 不实现攻击、子弹、碰撞、放置、波次、Game Over
-- 不改 lane 条数、不改矩形尺寸
-
----
-
-## 验证步骤
-
-1. 打开 http://localhost:4321/game
-2. 每条路：绿色植物在**右侧**，静止
-3. 紫色僵尸在**左侧**出生，向**右**平滑移动，不串道
-4. 僵尸经过植物后，在右边界停下，不 Game Over
-5. 刷新 / HMR 后仍是 3+3，不叠实体
-6. `/` 首页不变
-7. `npm run build` 成功
-8. core 中无 `LEFT_BOUND`、无 `x -= speed`
-9. `GameScene` 仍只有 `rect.x = zombie.x`，没有方向运算
+```ts
+function findTarget(plant, zombies): ZombieState | null {
+  let best = null;
+  for (const z of zombies) {
+    if (z.hp <= 0) continue;
+    if (z.lane !== plant.lane) continue;
+    if (z.x >= plant.x) continue;
+    if (!best || z.x > best.x) best = z;
+  }
+  return best;
+}
+```
 
 ---
 
-## 风险
+## 9. cooldown 逻辑
+
+```ts
+plant.attackCooldown = Math.max(0, plant.attackCooldown - dt);
+if (plant.attackCooldown > 0) return;
+const target = findTarget(plant, world.zombies);
+if (!target) return;
+target.hp -= plant.attackDamage;
+plant.attackCooldown = plant.attackInterval;
+```
+
+初始 cooldown = 0 → 第一下立刻打。
+
+---
+
+## 10. HP / 死亡发生在哪里
+
+| 行为 | 哪里 |
+|---|---|
+| `hp -= damage` | `combat.ts` / `applyPlantAttacks` |
+| `hp <= 0` 含义 | 随后 filter 掉 |
+| 从数组移除 | `update.ts` 末尾 |
+| Scene 扣血 | **禁止** |
+| `this.time.addEvent` 控攻击 | **禁止** |
+
+---
+
+## 11. core → Phaser View 同步
+
+```
+create:
+  为每个 zombie 建 Rectangle + Text（各一次）
+  zombieViews: Map<id, Rectangle>
+  zombieHpViews: Map<id, Text>
+
+每帧:
+  dt = min(delta/1000, 0.05)
+  stepWorld(world, dt)
+
+  对 zombieViews 里每个 id：
+    若 world.zombies 没有该 id
+      → rect.destroy()、text.destroy()
+      → 两个 Map delete(id)
+
+  对仍存活的 zombie：
+    rect.x = zombie.x
+    text 内容 = String(zombie.hp)
+    text.x = zombie.x
+    text.y = laneToY(lane) - HP_LABEL_OFFSET_Y
+```
+
+- 死亡以 **core 数组里没有这个 id** 为准，不用「矩形看起来没血了」
+- 不每帧重建 Rectangle / Text
+- Scene **不**写 `zombie.hp -= ...`
+
+植物仍无 View Map 更新（位置不变）。本阶段植物不掉血，不必给植物做 HP UI。
+
+---
+
+## 12. HP 显示方式
+
+**推荐：僵尸矩形上方的数字文字**（如 `3` → `2` → `1`），不用血条。
+
+原因：HP 是很小的整数；`add.text` 即可；不新框架、不新资源。血条要多两个矩形，对本阶段过重。
+
+真实数值来自 `zombie.hp`。偏移和颜色在 **view.ts**。
+
+需要 **额外 Map 存 HP Text**（`zombieHpViews`），与矩形 Map 分开，死亡时一起 destroy。
+
+---
+
+## 13. 以后 3 种植物 / 2 种僵尸
+
+`PlantState` 已有 `attackDamage` / `attackInterval`。以后加 `kind`，`createInitialWorld` 按 kind 填不同数字；`findTarget` 可继续用。显示层按 kind 换色。不要为每种植物建 Phaser Sprite 子类当规则。本阶段不加 `kind`。
+
+---
+
+## 14. 实施步骤（批准后再做）
+
+1. 扩展 `PlantState`；加攻击常量。
+2. `world.ts` 填入 `attackDamage` / `attackInterval` / `attackCooldown: 0`。
+3. 新增 `combat.ts`（`findTarget`、`applyPlantAttacks`）。
+4. `stepWorld`：移动 → 攻击 → filter 死者。
+5. 更新 `core/index.ts` 导出。
+6. `view.ts` 加 HP 文字颜色和 y 偏移。
+7. `GameScene`：HP Text Map、同步、按缺失 id 销毁。
+8. 抽查 core 无 Phaser/DOM；Scene 无扣血、无 `time.addEvent` 控攻击。
+9. 按验收验证。不装依赖，不改 plan 文件。
+
+---
+
+## 15. 验证步骤
+
+1. http://localhost:4321/game 能打开
+2. 3 条 lane，每路一绿植物（右）、一紫僵尸（左→右）
+3. 能看到 HP 数字下降
+4. 约数秒后僵尸消失（View 销毁），不留残影
+5. 死亡后不再移动、不再挨打
+6. 跨 lane 植物不应打死另一路僵尸（三路独立掉血/死亡）
+7. 刷新 / HMR 不叠实体
+8. `/` 不变
+9. `npm.cmd run build` 成功
+10. `src/game/core/**` 无 Phaser / DOM
+11. Scene 无 `hp -=`，无用 Phaser timer 当真实攻击时钟
+12. 无 physics、无新 npm 依赖
+
+---
+
+## 16. 风险
 
 | 风险 | 应对 |
 |---|---|
-| 只改了显示、忘了改 `stepWorld` | 必须改 `+=` 和 `END_X` |
-| 漏改 `index.ts` 仍导出 `LEFT_BOUND` | 编译失败或旧名残留；一并改导出 |
-| `END_X` 设在植物左侧，僵尸到不了植物右边 | 使用 728，大于 `PLANT_X` 688 |
-| 在 Scene 里再写一遍方向 | 禁止 |
+| Scene 里扣血或 `time.addEvent` 控节奏 | 禁止；时钟只在 core cooldown |
+| 遍历时 splice 跳过元素 | 结束后 filter |
+| 每帧新建 Text | 只在 create / 与僵尸同生；之后 `setText` |
+| 只 destroy 矩形、漏文字 | 两个 Map 一起删 |
+| 用 `y` 或像素距离选目标 | 只用 lane 和逻辑 `x` |
+| 无限射程导致出生即死看不清移动 | 3HP / 1秒 / 1伤，大约走 3 秒再消失 |
+| `hp <= 0` 仍留在数组被打/被画 | filter；选目标跳过 hp<=0 |
+| Scene 用 `hp<=0` 自行决定销毁 | 以「id 不在 world.zombies」为准 |
+| core 引用 view/config | 禁止 |
 
 ---
 
-## 批准后的实施步骤
+## 17. 本阶段明确不做
 
-1. 改 `constants.ts` 三个位置常量并重命名终点。
-2. 改 `update.ts` 移动与判定。
-3. 改 `index.ts` 导出。
-4. 按上面验证。不改 `phaser-plan.md`（执行阶段），不 commit。
+子弹、碰撞、物理、僵尸打植物、植物掉血、Game Over、波次、阳光、放置、AOE/DOT、多种单位、正式美术/音效、后端、React、新 npm 依赖、ECS/事件总线。
+
+无偏离 MVP-2 范围的必要。
