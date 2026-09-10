@@ -1,5 +1,6 @@
 import { END_X } from './constants';
 import { applyPlantAttacks } from './combat';
+import { stepExistingProjectiles } from './projectiles';
 import type { WorldState } from './types';
 
 export function stepWorld(world: WorldState, dt: number): void {
@@ -15,7 +16,10 @@ export function stepWorld(world: WorldState, dt: number): void {
 		}
 	}
 
-	applyPlantAttacks(world, dt);
+	const expiredProjectileIds = stepExistingProjectiles(world, dt);
 
 	world.zombies = world.zombies.filter((zombie) => zombie.hp > 0);
+	world.projectiles = world.projectiles.filter((projectile) => !expiredProjectileIds.has(projectile.id));
+
+	applyPlantAttacks(world, dt);
 }

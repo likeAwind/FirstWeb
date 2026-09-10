@@ -19,7 +19,18 @@ export interface ZombieState {
 	reachedEnd: boolean;
 }
 
+export interface ProjectileState {
+	id: string;
+	lane: LaneId;
+	x: number;
+	speed: number;
+	damage: number;
+	sourcePlantId: string;
+}
+
 export interface WorldState {
 	plants: PlantState[];
 	zombies: ZombieState[];
+	projectiles: ProjectileState[];
+	nextProjectileId: number;
 }

@@ -13,3 +13,8 @@ export const ZOMBIE_HP = 6;
 
 export const PLANT_ATTACK_DAMAGE = 1;
 export const PLANT_ATTACK_INTERVAL = 1;
+
+export const PEA_SPEED = 320;
+export const PROJECTILE_SPAWN_OFFSET_X = 28;
+export const HIT_DISTANCE = 20;
+export const PROJECTILE_MIN_X = 0;

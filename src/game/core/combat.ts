@@ -1,3 +1,4 @@
+import { PEA_SPEED, PROJECTILE_SPAWN_OFFSET_X } from './constants';
 import type { PlantState, WorldState, ZombieState } from './types';
 
 export function findTarget(plant: PlantState, zombies: ZombieState[]): ZombieState | null {
@@ -21,7 +22,14 @@ export function applyPlantAttacks(world: WorldState, dt: number): void {
 		const target = findTarget(plant, world.zombies);
 		if (!target) continue;
 
-		target.hp -= plant.attackDamage;
+		world.projectiles.push({
+			id: `pea-${world.nextProjectileId++}`,
+			lane: plant.lane,
+			x: plant.x - PROJECTILE_SPAWN_OFFSET_X,
+			speed: PEA_SPEED,
+			damage: plant.attackDamage,
+			sourcePlantId: plant.id,
+		});
 		plant.attackCooldown = plant.attackInterval;
 	}
 }

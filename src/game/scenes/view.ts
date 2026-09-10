@@ -3,19 +3,42 @@ import type { LaneId } from '../core';
 
 export const GAME_HEIGHT = 480;
 
-export const PLANT_VIEW_WIDTH = 36;
-export const PLANT_VIEW_HEIGHT = 36;
+export const PLANT_VIEW_WIDTH = 64;
+export const PLANT_VIEW_HEIGHT = 64;
 
 export const ZOMBIE_VIEW_WIDTH = 64;
 export const ZOMBIE_VIEW_HEIGHT = 64;
 
+export const PEA_VIEW_WIDTH = 24;
+export const PEA_VIEW_HEIGHT = 12;
+
+export const PLANT_IDLE_SHEET_KEY = 'pea-shooter-idle-sheet';
+export const PLANT_IDLE_ANIM_KEY = 'pea-shooter-idle';
+export const PLANT_IDLE_SHEET_URL = '/game/plants/pea-shooter/idle.png';
+
+export const PLANT_ATTACK_SHEET_KEY = 'pea-shooter-attack-sheet';
+export const PLANT_ATTACK_ANIM_KEY = 'pea-shooter-attack';
+export const PLANT_ATTACK_SHEET_URL = '/game/plants/pea-shooter/attack.png';
+
+export const PLANT_FRAME_WIDTH = 48;
+export const PLANT_FRAME_HEIGHT = 48;
+export const PLANT_IDLE_FRAME_RATE = 10;
+export const PLANT_ATTACK_FRAME_RATE = 10;
+
+export const PEA_SHEET_KEY = 'pea-fly-sheet';
+export const PEA_FLY_ANIM_KEY = 'pea-fly';
+export const PEA_SHEET_URL = '/game/projectiles/pea-fly.png';
+export const PEA_FRAME_WIDTH = 24;
+export const PEA_FRAME_HEIGHT = 12;
+export const PEA_FLY_FRAME_RATE = 12;
+
 export const ZOMBIE_SHEET_KEY = 'zombie-walk-sheet';
 export const ZOMBIE_WALK_ANIM_KEY = 'zombie-walk';
-export const ZOMBIE_SHEET_URL = '/game/zombie/walk.png';
+export const ZOMBIE_SHEET_URL = '/game/zombie/basic/walk.png';
 
 export const ZOMBIE_DEATH_SHEET_KEY = 'zombie-die-sheet';
 export const ZOMBIE_DEATH_ANIM_KEY = 'zombie-die';
-export const ZOMBIE_DEATH_SHEET_URL = '/game/zombie/die.png';
+export const ZOMBIE_DEATH_SHEET_URL = '/game/zombie/basic/die.png';
 
 export const ZOMBIE_FRAME_WIDTH = 48;
 export const ZOMBIE_FRAME_HEIGHT = 48;

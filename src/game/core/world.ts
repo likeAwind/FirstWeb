@@ -35,5 +35,5 @@ export function createInitialWorld(): WorldState {
 		});
 	}
 
-	return { plants, zombies };
+	return { plants, zombies, projectiles: [], nextProjectileId: 1 };
 }
