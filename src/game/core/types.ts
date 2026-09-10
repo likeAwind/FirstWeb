@@ -1,5 +1,9 @@
 export type LaneId = 0 | 1 | 2;
 
+export type ZombieKind = 'basic' | 'fat';
+
+export type GameStatus = 'playing' | 'victory' | 'game-over';
+
 export interface PlantState {
 	id: string;
 	lane: LaneId;
@@ -12,10 +16,14 @@ export interface PlantState {
 
 export interface ZombieState {
 	id: string;
+	kind: ZombieKind;
 	lane: LaneId;
 	x: number;
 	hp: number;
 	speed: number;
+	attackDamage: number;
+	attackInterval: number;
+	attackCooldown: number;
 	reachedEnd: boolean;
 }
 
@@ -33,4 +41,9 @@ export interface WorldState {
 	zombies: ZombieState[];
 	projectiles: ProjectileState[];
 	nextProjectileId: number;
+	nextZombieId: number;
+	gameStatus: GameStatus;
+	waveIndex: number;
+	waveElapsed: number;
+	nextSpawnIndex: number;
 }
