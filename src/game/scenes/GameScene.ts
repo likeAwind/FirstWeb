@@ -12,17 +12,18 @@ import {
 	startBattle,
 	stepWorld,
 } from '../core';
-import type { GameStatus, PlacePlantResult, PlantKind, WorldState } from '../core';
+import type { GameStatus, PlacePlantResult, PlantKind, WorldState, WorldStepEvents } from '../core';
+import { createCardViews, syncCardBar } from './cardView';
+import type { CardView } from './cardView';
 import {
 	BUTTON_FILL_COLOR,
 	BGM_MAIN_KEY,
 	BGM_MAIN_URLS,
 	BGM_MAIN_VOLUME,
-	CARD_FILL_COLOR,
-	CARD_SELECTED_COLOR,
 	COLOR_HP,
 	COLOR_LANE_LINE,
 	COLOR_UI,
+	DEPTH_FX,
 	DEPTH_GRID,
 	DEPTH_HP,
 	DEPTH_HUD_BG,
@@ -41,8 +42,6 @@ import {
 	HOVER_VALID_COLOR,
 	HP_LABEL_OFFSET_Y,
 	HUD_BG_COLOR,
-	HUD_CARD_X,
-	HUD_CARD_Y,
 	HUD_HEIGHT,
 	HUD_START_X,
 	HUD_START_Y,
@@ -68,8 +67,31 @@ import {
 	PLANT_IDLE_FRAME_RATE,
 	PLANT_IDLE_SHEET_KEY,
 	PLANT_IDLE_SHEET_URL,
-	PLANT_VIEW_HEIGHT,
-	PLANT_VIEW_WIDTH,
+	SUNFLOWER_DIE_ANIM_KEY,
+	SUNFLOWER_DIE_FRAME_RATE,
+	SUNFLOWER_DIE_SHEET_KEY,
+	SUNFLOWER_DIE_SHEET_URL,
+	SUNFLOWER_FRAME_HEIGHT,
+	SUNFLOWER_FRAME_WIDTH,
+	SUNFLOWER_HURT_ANIM_KEY,
+	SUNFLOWER_HURT_FRAME_RATE,
+	SUNFLOWER_HURT_SHEET_KEY,
+	SUNFLOWER_HURT_SHEET_URL,
+	SUNFLOWER_IDLE_ANIM_KEY,
+	SUNFLOWER_IDLE_FRAME_RATE,
+	SUNFLOWER_IDLE_SHEET_KEY,
+	SUNFLOWER_IDLE_SHEET_URL,
+	SUNFLOWER_PRODUCE_ANIM_KEY,
+	SUNFLOWER_PRODUCE_FRAME_RATE,
+	SUNFLOWER_PRODUCE_SHEET_KEY,
+	SUNFLOWER_PRODUCE_SHEET_URL,
+	SUN_GAIN_FX_ANIM_KEY,
+	SUN_GAIN_FX_FRAME_RATE,
+	SUN_GAIN_FX_OFFSET_Y,
+	SUN_GAIN_FX_SHEET_KEY,
+	SUN_GAIN_FX_SHEET_URL,
+	SUN_GAIN_FX_VIEW_HEIGHT,
+	SUN_GAIN_FX_VIEW_WIDTH,
 	SFX_BUTTON_CLICK_KEY,
 	SFX_BUTTON_CLICK_VOLUME,
 	SFX_FILES,
@@ -102,10 +124,12 @@ import {
 	ZOMBIE_SHEET_URL,
 	ZOMBIE_WALK_ANIM_KEY,
 	ZOMBIE_WALK_FRAME_RATE,
+	SNOW_PEA_PROJECTILE_TINT,
+	ZOMBIE_SLOW_TINT,
 	laneToY,
 	zombieViewSize,
 } from './view';
-import { hitTestPlantCell, plantViewKeys } from './placementView';
+import { hitTestPlantCell, plantPlaceholderStyle, plantViewKeys } from './placementView';
 
 interface GridCellView {
 	lane: 0 | 1 | 2;
@@ -130,7 +154,7 @@ export class GameScene extends Phaser.Scene {
 	private sunText!: Phaser.GameObjects.Text;
 	private hintText!: Phaser.GameObjects.Text;
 	private statusText!: Phaser.GameObjects.Text;
-	private cardBg!: Phaser.GameObjects.Rectangle;
+	private cardViews: CardView[] = [];
 	private startButton!: Phaser.GameObjects.Rectangle;
 	private startLabel!: Phaser.GameObjects.Text;
 	private restartButton!: Phaser.GameObjects.Rectangle;
@@ -167,6 +191,26 @@ export class GameScene extends Phaser.Scene {
 			frameWidth: ZOMBIE_FRAME_WIDTH,
 			frameHeight: ZOMBIE_FRAME_HEIGHT,
 		});
+		this.load.spritesheet(SUNFLOWER_IDLE_SHEET_KEY, SUNFLOWER_IDLE_SHEET_URL, {
+			frameWidth: SUNFLOWER_FRAME_WIDTH,
+			frameHeight: SUNFLOWER_FRAME_HEIGHT,
+		});
+		this.load.spritesheet(SUNFLOWER_PRODUCE_SHEET_KEY, SUNFLOWER_PRODUCE_SHEET_URL, {
+			frameWidth: SUNFLOWER_FRAME_WIDTH,
+			frameHeight: SUNFLOWER_FRAME_HEIGHT,
+		});
+		this.load.spritesheet(SUNFLOWER_HURT_SHEET_KEY, SUNFLOWER_HURT_SHEET_URL, {
+			frameWidth: SUNFLOWER_FRAME_WIDTH,
+			frameHeight: SUNFLOWER_FRAME_HEIGHT,
+		});
+		this.load.spritesheet(SUNFLOWER_DIE_SHEET_KEY, SUNFLOWER_DIE_SHEET_URL, {
+			frameWidth: SUNFLOWER_FRAME_WIDTH,
+			frameHeight: SUNFLOWER_FRAME_HEIGHT,
+		});
+		this.load.spritesheet(SUN_GAIN_FX_SHEET_KEY, SUN_GAIN_FX_SHEET_URL, {
+			frameWidth: SUNFLOWER_FRAME_WIDTH,
+			frameHeight: SUNFLOWER_FRAME_HEIGHT,
+		});
 		this.load.audio(BGM_MAIN_KEY, BGM_MAIN_URLS);
 		for (const sfx of SFX_FILES) {
 			this.load.audio(sfx.key, sfx.url);
@@ -187,11 +231,12 @@ export class GameScene extends Phaser.Scene {
 		this.zombieViews.clear();
 		this.zombieHpViews.clear();
 		this.gridCells = [];
+		this.cardViews = [];
 
 		this.drawLanes();
 		this.drawGrid();
 		this.createHud();
-		this.createCard();
+		this.createCards();
 		this.createButtons();
 		this.registerInput();
 
@@ -202,11 +247,19 @@ export class GameScene extends Phaser.Scene {
 		this.input.on('pointerdown', this.onPointerDown, this);
 		this.input.on('pointermove', this.onPointerMove, this);
 		this.input.keyboard?.on('keydown-ESC', this.cancelSelection, this);
+		this.input.keyboard?.on('keydown-ONE', this.selectPeaShooter, this);
+		this.input.keyboard?.on('keydown-TWO', this.selectSunflower, this);
+		this.input.keyboard?.on('keydown-THREE', this.selectWallNut, this);
+		this.input.keyboard?.on('keydown-FOUR', this.selectSnowPea, this);
 
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.input.off('pointerdown', this.onPointerDown, this);
 			this.input.off('pointermove', this.onPointerMove, this);
 			this.input.keyboard?.off('keydown-ESC', this.cancelSelection, this);
+			this.input.keyboard?.off('keydown-ONE', this.selectPeaShooter, this);
+			this.input.keyboard?.off('keydown-TWO', this.selectSunflower, this);
+			this.input.keyboard?.off('keydown-THREE', this.selectWallNut, this);
+			this.input.keyboard?.off('keydown-FOUR', this.selectSnowPea, this);
 			this.stopBgm();
 			this.bgm?.destroy();
 			this.bgm = undefined;
@@ -266,6 +319,51 @@ export class GameScene extends Phaser.Scene {
 				key: ZOMBIE_DEATH_ANIM_KEY,
 				frames: this.anims.generateFrameNumbers(ZOMBIE_DEATH_SHEET_KEY, { start: 0, end: 7 }),
 				frameRate: ZOMBIE_DEATH_FRAME_RATE,
+				repeat: 0,
+			});
+		}
+
+		if (!this.anims.exists(SUNFLOWER_IDLE_ANIM_KEY)) {
+			this.anims.create({
+				key: SUNFLOWER_IDLE_ANIM_KEY,
+				frames: this.anims.generateFrameNumbers(SUNFLOWER_IDLE_SHEET_KEY, { start: 0, end: 7 }),
+				frameRate: SUNFLOWER_IDLE_FRAME_RATE,
+				repeat: -1,
+			});
+		}
+
+		if (!this.anims.exists(SUNFLOWER_PRODUCE_ANIM_KEY)) {
+			this.anims.create({
+				key: SUNFLOWER_PRODUCE_ANIM_KEY,
+				frames: this.anims.generateFrameNumbers(SUNFLOWER_PRODUCE_SHEET_KEY, { start: 0, end: 7 }),
+				frameRate: SUNFLOWER_PRODUCE_FRAME_RATE,
+				repeat: 0,
+			});
+		}
+
+		if (!this.anims.exists(SUNFLOWER_HURT_ANIM_KEY)) {
+			this.anims.create({
+				key: SUNFLOWER_HURT_ANIM_KEY,
+				frames: this.anims.generateFrameNumbers(SUNFLOWER_HURT_SHEET_KEY, { start: 0, end: 7 }),
+				frameRate: SUNFLOWER_HURT_FRAME_RATE,
+				repeat: 0,
+			});
+		}
+
+		if (!this.anims.exists(SUNFLOWER_DIE_ANIM_KEY)) {
+			this.anims.create({
+				key: SUNFLOWER_DIE_ANIM_KEY,
+				frames: this.anims.generateFrameNumbers(SUNFLOWER_DIE_SHEET_KEY, { start: 0, end: 7 }),
+				frameRate: SUNFLOWER_DIE_FRAME_RATE,
+				repeat: 0,
+			});
+		}
+
+		if (!this.anims.exists(SUN_GAIN_FX_ANIM_KEY)) {
+			this.anims.create({
+				key: SUN_GAIN_FX_ANIM_KEY,
+				frames: this.anims.generateFrameNumbers(SUN_GAIN_FX_SHEET_KEY, { start: 0, end: 7 }),
+				frameRate: SUN_GAIN_FX_FRAME_RATE,
 				repeat: 0,
 			});
 		}
@@ -336,31 +434,11 @@ export class GameScene extends Phaser.Scene {
 		this.statusText.setDepth(DEPTH_STATUS);
 	}
 
-	private createCard(): void {
-		const cost = PLANT_CONFIG['pea-shooter'].cost;
-		this.cardBg = this.add.rectangle(HUD_CARD_X, HUD_CARD_Y, 148, 76, CARD_FILL_COLOR);
-		this.cardBg.setStrokeStyle(2, GRID_STROKE_COLOR);
-		this.cardBg.setInteractive({ useHandCursor: true });
-		this.cardBg.setDepth(DEPTH_UI);
-		this.cardBg.on('pointerdown', this.onCardClicked, this);
-
-		this.add
-			.text(HUD_CARD_X, HUD_CARD_Y - 14, '豌豆射手', {
-				fontFamily: 'sans-serif',
-				fontSize: '16px',
-				color: COLOR_UI,
-			})
-			.setOrigin(0.5, 0.5)
-			.setDepth(DEPTH_UI);
-
-		this.add
-			.text(HUD_CARD_X, HUD_CARD_Y + 14, `${cost} 阳光`, {
-				fontFamily: 'sans-serif',
-				fontSize: '14px',
-				color: COLOR_UI,
-			})
-			.setOrigin(0.5, 0.5)
-			.setDepth(DEPTH_UI);
+	private createCards(): void {
+		this.cardViews = createCardViews(this);
+		for (const card of this.cardViews) {
+			card.bg.on('pointerdown', () => this.onCardClicked(card.kind));
+		}
 	}
 
 	private createButtons(): void {
@@ -395,18 +473,47 @@ export class GameScene extends Phaser.Scene {
 			.setDepth(DEPTH_STATUS);
 	}
 
-	private onCardClicked(): void {
+	private onCardClicked(kind: PlantKind): void {
 		this.playSfx(SFX_BUTTON_CLICK_KEY, SFX_BUTTON_CLICK_VOLUME);
-		if (this.selectedPlantKind === 'pea-shooter') {
+		this.selectCard(kind);
+	}
+
+	private selectPeaShooter = (): void => {
+		this.selectCard('pea-shooter');
+	};
+
+	private selectSunflower = (): void => {
+		this.selectCard('sunflower');
+	};
+
+	private selectWallNut = (): void => {
+		this.selectCard('wall-nut');
+	};
+
+	private selectSnowPea = (): void => {
+		this.selectCard('snow-pea');
+	};
+
+	private selectCard(kind: PlantKind): void {
+		if (this.selectedPlantKind === kind) {
 			this.cancelSelection();
 			this.hint = '已取消选择';
 			this.syncHud();
 			return;
 		}
 
-		this.selectedPlantKind = 'pea-shooter';
-		this.hint = '点击格子种植';
+		this.selectedPlantKind = kind;
+		this.hint = this.hintForCardAvailability(kind);
 		this.syncHud();
+	}
+
+	private hintForCardAvailability(kind: PlantKind): string {
+		const config = PLANT_CONFIG[kind];
+		if (this.world.sun < config.cost) return '阳光不足';
+		if (this.world.gameStatus === 'playing' && this.world.cardCooldowns[kind] > 0) {
+			return `卡片冷却中：${this.world.cardCooldowns[kind].toFixed(1)}s`;
+		}
+		return '点击格子种植';
 	}
 
 	private onStartClicked(): void {
@@ -505,11 +612,11 @@ export class GameScene extends Phaser.Scene {
 			return;
 		}
 
-		this.hint = this.hintForResult(result);
+		this.hint = this.hintForResult(result, kind);
 		this.syncHud();
 	}
 
-	private hintForResult(result: PlacePlantResult): string {
+	private hintForResult(result: PlacePlantResult, kind: PlantKind): string {
 		switch (result) {
 			case 'occupied':
 				return '这个格子已经有植物';
@@ -519,6 +626,8 @@ export class GameScene extends Phaser.Scene {
 				return '现在不能种植';
 			case 'invalid-cell':
 				return '不能种在这里';
+			case 'card-cooldown':
+				return `卡片冷却中：${this.world.cardCooldowns[kind].toFixed(1)}s`;
 			case 'placed':
 				return '';
 		}
@@ -572,6 +681,16 @@ export class GameScene extends Phaser.Scene {
 		});
 	}
 
+	private registerSunflowerTransientComplete(sprite: Phaser.GameObjects.Sprite, plantId: string): void {
+		const keys = plantViewKeys('sunflower');
+		sprite.on(Phaser.Animations.Events.ANIMATION_COMPLETE, (animation: Phaser.Animations.Animation) => {
+			if (animation.key !== keys.produceAnim && animation.key !== keys.hurtAnim) return;
+			if (!sprite.active) return;
+			if (this.plantViews.get(plantId) !== sprite) return;
+			sprite.play(keys.idleAnim);
+		});
+	}
+
 	private playPlantAttack(sourcePlantId: string): void {
 		const sprite = this.plantViews.get(sourcePlantId);
 		const plant = this.world.plants.find((item) => item.id === sourcePlantId);
@@ -580,6 +699,7 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	private playZombieDeath(sprite: Phaser.GameObjects.Sprite): void {
+		sprite.clearTint();
 		sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + ZOMBIE_DEATH_ANIM_KEY, () => {
 			sprite.destroy();
 		});
@@ -618,12 +738,16 @@ export class GameScene extends Phaser.Scene {
 			let sprite = this.plantViews.get(plant.id);
 			if (!sprite) {
 				const keys = plantViewKeys(plant.kind);
+				const style = plantPlaceholderStyle(plant.kind);
 				sprite = this.add.sprite(plant.x, y, keys.idleSheet);
-				sprite.setDisplaySize(PLANT_VIEW_WIDTH, PLANT_VIEW_HEIGHT);
+				sprite.setDisplaySize(style.width, style.height);
+				if (style.tint === null) sprite.clearTint();
+				else sprite.setTint(style.tint);
 				sprite.setDepth(DEPTH_SPRITE);
 				sprite.play(keys.idleAnim);
 				sprite.setData('plantKind', plant.kind);
 				this.registerPlantAttackComplete(sprite);
+				if (plant.kind === 'sunflower') this.registerSunflowerTransientComplete(sprite, plant.id);
 				this.plantViews.set(plant.id, sprite);
 
 				const hpText = this.add.text(plant.x, y - HP_LABEL_OFFSET_Y, String(plant.hp), {
@@ -670,6 +794,7 @@ export class GameScene extends Phaser.Scene {
 				sprite.setDepth(DEPTH_SPRITE);
 				sprite.play(ZOMBIE_WALK_ANIM_KEY);
 				this.zombieViews.set(zombie.id, sprite);
+				this.syncZombieSlowTint(sprite, zombie.slowRemaining);
 
 				const hpText = this.add.text(zombie.x, y - HP_LABEL_OFFSET_Y, String(zombie.hp), {
 					fontFamily: 'monospace',
@@ -683,6 +808,7 @@ export class GameScene extends Phaser.Scene {
 			}
 
 			sprite.x = zombie.x;
+			this.syncZombieSlowTint(sprite, zombie.slowRemaining);
 			const hpText = this.zombieHpViews.get(zombie.id);
 			if (hpText) {
 				hpText.setText(String(zombie.hp));
@@ -708,6 +834,8 @@ export class GameScene extends Phaser.Scene {
 				sprite.setDisplaySize(PEA_VIEW_WIDTH, PEA_VIEW_HEIGHT);
 				sprite.setDepth(DEPTH_SPRITE);
 				sprite.play(PEA_FLY_ANIM_KEY);
+				if (projectile.kind === 'snow-pea') sprite.setTint(SNOW_PEA_PROJECTILE_TINT);
+				else sprite.clearTint();
 				this.projectileViews.set(projectile.id, sprite);
 				this.playPlantAttack(projectile.sourcePlantId);
 				this.playSfx(SFX_PEA_SHOOT_KEY, SFX_PEA_SHOOT_VOLUME);
@@ -736,7 +864,7 @@ export class GameScene extends Phaser.Scene {
 		this.setButtonShown(this.startButton, this.startLabel, preparing);
 		this.setButtonShown(this.restartButton, this.restartLabel, terminal);
 
-		this.cardBg.setStrokeStyle(2, this.selectedPlantKind ? CARD_SELECTED_COLOR : GRID_STROKE_COLOR);
+		syncCardBar(this.cardViews, this.world, this.selectedPlantKind);
 
 		if (this.world.gameStatus === 'victory') {
 			this.statusText.setText('胜利');
@@ -765,8 +893,59 @@ export class GameScene extends Phaser.Scene {
 		this.syncPlantViews();
 		this.syncZombieViews();
 		this.syncProjectileViews();
+		this.handlePlantStepEvents(events);
 		this.syncHud();
 		if (this.selectedPlantKind && this.hoveredCell) this.updateGridHover();
+	}
+
+	private handlePlantStepEvents(events: WorldStepEvents): void {
+		const damagedIds = new Set(events.plantDamagedIds);
+
+		for (const plantId of events.sunProducedPlantIds) {
+			this.spawnSunGainFx(plantId);
+			if (damagedIds.has(plantId)) continue;
+			this.playSunflowerProduce(plantId);
+		}
+
+		for (const plantId of damagedIds) {
+			this.playSunflowerHurt(plantId);
+		}
+	}
+
+	private spawnSunGainFx(plantId: string): void {
+		const plant = this.world.plants.find((item) => item.id === plantId);
+		if (!plant || plant.kind !== 'sunflower') return;
+
+		const fx = this.add.sprite(plant.x, laneToY(plant.lane) - SUN_GAIN_FX_OFFSET_Y, SUN_GAIN_FX_SHEET_KEY);
+		fx.setDisplaySize(SUN_GAIN_FX_VIEW_WIDTH, SUN_GAIN_FX_VIEW_HEIGHT);
+		fx.setDepth(DEPTH_FX);
+		fx.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + SUN_GAIN_FX_ANIM_KEY, () => {
+			fx.destroy();
+		});
+		fx.play(SUN_GAIN_FX_ANIM_KEY);
+	}
+
+	private playSunflowerProduce(plantId: string): void {
+		const sprite = this.liveSunflowerSprite(plantId);
+		const produceAnim = plantViewKeys('sunflower').produceAnim;
+		if (!sprite || !produceAnim) return;
+		if (sprite.anims.currentAnim?.key === SUNFLOWER_HURT_ANIM_KEY) return;
+		sprite.play(produceAnim);
+	}
+
+	private playSunflowerHurt(plantId: string): void {
+		const sprite = this.liveSunflowerSprite(plantId);
+		const hurtAnim = plantViewKeys('sunflower').hurtAnim;
+		if (!sprite || !hurtAnim) return;
+		sprite.play(hurtAnim);
+	}
+
+	private liveSunflowerSprite(plantId: string): Phaser.GameObjects.Sprite | undefined {
+		const plant = this.world.plants.find((item) => item.id === plantId);
+		if (!plant || plant.kind !== 'sunflower') return undefined;
+		const sprite = this.plantViews.get(plantId);
+		if (!sprite || !sprite.active) return undefined;
+		return sprite;
 	}
 
 	private handleStatusTransition(): void {
@@ -782,5 +961,10 @@ export class GameScene extends Phaser.Scene {
 		}
 
 		this.previousGameStatus = status;
+	}
+
+	private syncZombieSlowTint(sprite: Phaser.GameObjects.Sprite, slowRemaining: number): void {
+		if (slowRemaining > 0) sprite.setTint(ZOMBIE_SLOW_TINT);
+		else sprite.clearTint();
 	}
 }

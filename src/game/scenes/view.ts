@@ -37,6 +37,36 @@ export const PLANT_IDLE_FRAME_RATE = 10;
 export const PLANT_ATTACK_FRAME_RATE = 10;
 export const PLANT_DEATH_FRAME_RATE = 10;
 
+export const SUNFLOWER_IDLE_SHEET_KEY = 'sunflower-idle-sheet';
+export const SUNFLOWER_PRODUCE_SHEET_KEY = 'sunflower-produce-sheet';
+export const SUNFLOWER_HURT_SHEET_KEY = 'sunflower-hurt-sheet';
+export const SUNFLOWER_DIE_SHEET_KEY = 'sunflower-die-sheet';
+export const SUN_GAIN_FX_SHEET_KEY = 'sun-gain-fx-sheet';
+
+export const SUNFLOWER_IDLE_SHEET_URL = '/game/plants/sunflower/sunflower-idle.png';
+export const SUNFLOWER_PRODUCE_SHEET_URL = '/game/plants/sunflower/sunflower-produce.png';
+export const SUNFLOWER_HURT_SHEET_URL = '/game/plants/sunflower/sunflower-hurt.png';
+export const SUNFLOWER_DIE_SHEET_URL = '/game/plants/sunflower/sunflower-die.png';
+export const SUN_GAIN_FX_SHEET_URL = '/game/plants/sunflower/sun-gain-fx.png';
+
+export const SUNFLOWER_IDLE_ANIM_KEY = 'sunflower-idle';
+export const SUNFLOWER_PRODUCE_ANIM_KEY = 'sunflower-produce';
+export const SUNFLOWER_HURT_ANIM_KEY = 'sunflower-hurt';
+export const SUNFLOWER_DIE_ANIM_KEY = 'sunflower-die';
+export const SUN_GAIN_FX_ANIM_KEY = 'sun-gain-fx';
+
+export const SUNFLOWER_FRAME_WIDTH = 64;
+export const SUNFLOWER_FRAME_HEIGHT = 64;
+export const SUNFLOWER_IDLE_FRAME_RATE = 8;
+export const SUNFLOWER_PRODUCE_FRAME_RATE = 10;
+export const SUNFLOWER_HURT_FRAME_RATE = 12;
+export const SUNFLOWER_DIE_FRAME_RATE = 10;
+export const SUN_GAIN_FX_FRAME_RATE = 12;
+
+export const SUN_GAIN_FX_VIEW_WIDTH = 64;
+export const SUN_GAIN_FX_VIEW_HEIGHT = 64;
+export const SUN_GAIN_FX_OFFSET_Y = 34;
+
 export const PEA_SHEET_KEY = 'pea-fly-sheet';
 export const PEA_FLY_ANIM_KEY = 'pea-fly';
 export const PEA_SHEET_URL = '/game/projectiles/pea-fly.png';
@@ -75,10 +105,17 @@ export const HINT_WRAP_WIDTH = 220;
 export const STATUS_TEXT_SIZE = '36px';
 
 export const HUD_BG_COLOR = 0x111827;
-export const HUD_CARD_X = WORLD_WIDTH / 2;
+export const HUD_CARD_START_X = 248;
 export const HUD_CARD_Y = HUD_HEIGHT / 2;
+export const HUD_CARD_WIDTH = 80;
+export const HUD_CARD_HEIGHT = 72;
+export const HUD_CARD_GAP = 8;
 export const HUD_START_X = WORLD_WIDTH - 86;
 export const HUD_START_Y = HUD_HEIGHT / 2;
+
+export const CARD_DISABLED_ALPHA = 0.45;
+export const SNOW_PEA_PROJECTILE_TINT = 0x7dd3fc;
+export const ZOMBIE_SLOW_TINT = 0x7dd3fc;
 
 export const BGM_MAIN_KEY = 'bgm-main';
 export const BGM_MAIN_URLS = [
@@ -130,6 +167,7 @@ export const BUTTON_FILL_COLOR = 0x1e293b;
 export const DEPTH_GRID = 1;
 export const DEPTH_SPRITE = 10;
 export const DEPTH_HP = 20;
+export const DEPTH_FX = 30;
 export const DEPTH_HUD_BG = 900;
 export const DEPTH_UI = 1000;
 export const DEPTH_STATUS = 1100;

@@ -39,6 +39,19 @@ export const WAVES: WaveDefinition[] = [
 			{ at: 7, lane: 2, kind: 'basic' },
 		],
 	},
+	{
+		spawns: [
+			{ at: 0, lane: 0, kind: 'fat' },
+			{ at: 0.4, lane: 2, kind: 'fat' },
+			{ at: 1.5, lane: 1, kind: 'basic' },
+			{ at: 2.5, lane: 1, kind: 'basic' },
+			{ at: 4.0, lane: 1, kind: 'fat' },
+			{ at: 5.0, lane: 0, kind: 'basic' },
+			{ at: 5.5, lane: 2, kind: 'basic' },
+			{ at: 7.0, lane: 0, kind: 'basic' },
+			{ at: 7.5, lane: 2, kind: 'basic' },
+		],
+	},
 ];
 
 export const WAVE_COUNT = WAVES.length;
@@ -56,6 +69,7 @@ function spawnZombie(world: WorldState, lane: LaneId, kind: ZombieKind): void {
 		attackInterval: config.attackInterval,
 		attackCooldown: 0,
 		reachedEnd: false,
+		slowRemaining: 0,
 	});
 }
 

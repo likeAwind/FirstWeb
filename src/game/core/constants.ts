@@ -1,4 +1,4 @@
-import type { PlantKind, ZombieKind } from './types';
+import type { PlantConfig, PlantKind, ZombieKind } from './types';
 
 export const LANE_COUNT = 3;
 
@@ -22,11 +22,44 @@ export const STARTING_SUN = 300;
 export const SUN_INCOME_AMOUNT = 25;
 export const SUN_INCOME_INTERVAL = 3;
 
-export const PLANT_CONFIG: Record<
-	PlantKind,
-	{ hp: number; attackDamage: number; attackInterval: number; cost: number }
-> = {
-	'pea-shooter': { hp: 5, attackDamage: 1, attackInterval: 1, cost: 100 },
+export const SLOW_DURATION = 3;
+export const SLOW_MULTIPLIER = 0.5;
+
+export const PLANT_KINDS = ['pea-shooter', 'sunflower', 'wall-nut', 'snow-pea'] as const;
+
+export const PLANT_CONFIG: Record<PlantKind, PlantConfig> = {
+	'pea-shooter': {
+		behavior: 'shooter',
+		hp: 5,
+		cost: 100,
+		cardCooldown: 2.5,
+		attackDamage: 1,
+		attackInterval: 1,
+		projectileKind: 'pea',
+	},
+	sunflower: {
+		behavior: 'producer',
+		hp: 4,
+		cost: 50,
+		cardCooldown: 5,
+		sunAmount: 25,
+		sunInterval: 6,
+	},
+	'wall-nut': {
+		behavior: 'blocker',
+		hp: 20,
+		cost: 75,
+		cardCooldown: 6,
+	},
+	'snow-pea': {
+		behavior: 'shooter',
+		hp: 5,
+		cost: 150,
+		cardCooldown: 4,
+		attackDamage: 1,
+		attackInterval: 1.25,
+		projectileKind: 'snow-pea',
+	},
 };
 
 export const ZOMBIE_CONFIG: Record<

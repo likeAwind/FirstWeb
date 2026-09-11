@@ -3,6 +3,7 @@ import {
 	PLANT_COLUMN_COUNT,
 	PLANT_CONFIG,
 	PLANT_GRID_XS,
+	PLANT_KINDS,
 	SUN_INCOME_AMOUNT,
 	SUN_INCOME_INTERVAL,
 } from './constants';
@@ -40,6 +41,9 @@ export function validatePlacement(
 	if (world.sun < PLANT_CONFIG[kind].cost) {
 		return 'insufficient-sun';
 	}
+	if (world.gameStatus === 'playing' && world.cardCooldowns[kind] > 0) {
+		return 'card-cooldown';
+	}
 	return null;
 }
 
@@ -62,6 +66,9 @@ export function placePlant(
 	if (error) return error;
 
 	const config = PLANT_CONFIG[kind];
+	const isShooter = config.behavior === 'shooter';
+	const isProducer = config.behavior === 'producer';
+
 	world.sun -= config.cost;
 	world.plants.push({
 		id: `plant-${world.nextPlantId++}`,
@@ -70,10 +77,16 @@ export function placePlant(
 		columnIndex,
 		x: PLANT_GRID_XS[columnIndex],
 		hp: config.hp,
-		attackDamage: config.attackDamage,
-		attackInterval: config.attackInterval,
+		attackDamage: isShooter ? config.attackDamage : 0,
+		attackInterval: isShooter ? config.attackInterval : 0,
 		attackCooldown: 0,
+		productionCooldown: isProducer ? config.sunInterval : 0,
 	});
+
+	if (world.gameStatus === 'playing') {
+		world.cardCooldowns[kind] = config.cardCooldown;
+	}
+
 	return 'placed';
 }
 
@@ -91,5 +104,33 @@ export function stepSunIncome(world: WorldState, dt: number): void {
 	while (world.sunIncomeElapsed >= SUN_INCOME_INTERVAL) {
 		world.sun += SUN_INCOME_AMOUNT;
 		world.sunIncomeElapsed -= SUN_INCOME_INTERVAL;
+	}
+}
+
+export function stepPlantProduction(world: WorldState, dt: number): string[] {
+	const producedIds: string[] = [];
+	if (world.gameStatus !== 'playing') return producedIds;
+
+	for (const plant of world.plants) {
+		const config = PLANT_CONFIG[plant.kind];
+		if (config.behavior !== 'producer') continue;
+		if (plant.hp <= 0) continue;
+
+		plant.productionCooldown -= dt;
+		while (plant.productionCooldown <= 0) {
+			world.sun += config.sunAmount;
+			plant.productionCooldown += config.sunInterval;
+			producedIds.push(plant.id);
+		}
+	}
+
+	return producedIds;
+}
+
+export function stepCardCooldowns(world: WorldState, dt: number): void {
+	if (world.gameStatus !== 'playing') return;
+
+	for (const kind of PLANT_KINDS) {
+		world.cardCooldowns[kind] = Math.max(0, world.cardCooldowns[kind] - dt);
 	}
 }

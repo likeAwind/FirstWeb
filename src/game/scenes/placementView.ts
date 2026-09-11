@@ -9,6 +9,13 @@ import {
 	PLANT_DEATH_ANIM_KEY,
 	PLANT_IDLE_ANIM_KEY,
 	PLANT_IDLE_SHEET_KEY,
+	PLANT_VIEW_HEIGHT,
+	PLANT_VIEW_WIDTH,
+	SUNFLOWER_DIE_ANIM_KEY,
+	SUNFLOWER_HURT_ANIM_KEY,
+	SUNFLOWER_IDLE_ANIM_KEY,
+	SUNFLOWER_IDLE_SHEET_KEY,
+	SUNFLOWER_PRODUCE_ANIM_KEY,
 	laneToY,
 } from './view';
 
@@ -22,17 +29,53 @@ export interface PlantViewKeys {
 	idleAnim: string;
 	attackAnim: string;
 	deathAnim: string;
+	produceAnim?: string;
+	hurtAnim?: string;
 }
+
+export interface PlantPlaceholderStyle {
+	width: number;
+	height: number;
+	tint: number | null;
+}
+
+const PEA_SHOOTER_VIEW_KEYS: PlantViewKeys = {
+	idleSheet: PLANT_IDLE_SHEET_KEY,
+	idleAnim: PLANT_IDLE_ANIM_KEY,
+	attackAnim: PLANT_ATTACK_ANIM_KEY,
+	deathAnim: PLANT_DEATH_ANIM_KEY,
+};
+
+const SUNFLOWER_VIEW_KEYS: PlantViewKeys = {
+	idleSheet: SUNFLOWER_IDLE_SHEET_KEY,
+	idleAnim: SUNFLOWER_IDLE_ANIM_KEY,
+	attackAnim: PLANT_ATTACK_ANIM_KEY,
+	deathAnim: SUNFLOWER_DIE_ANIM_KEY,
+	produceAnim: SUNFLOWER_PRODUCE_ANIM_KEY,
+	hurtAnim: SUNFLOWER_HURT_ANIM_KEY,
+};
 
 export function plantViewKeys(kind: PlantKind): PlantViewKeys {
 	switch (kind) {
+		case 'sunflower':
+			return SUNFLOWER_VIEW_KEYS;
 		case 'pea-shooter':
-			return {
-				idleSheet: PLANT_IDLE_SHEET_KEY,
-				idleAnim: PLANT_IDLE_ANIM_KEY,
-				attackAnim: PLANT_ATTACK_ANIM_KEY,
-				deathAnim: PLANT_DEATH_ANIM_KEY,
-			};
+		case 'wall-nut':
+		case 'snow-pea':
+			return PEA_SHOOTER_VIEW_KEYS;
+	}
+}
+
+export function plantPlaceholderStyle(kind: PlantKind): PlantPlaceholderStyle {
+	switch (kind) {
+		case 'pea-shooter':
+			return { width: PLANT_VIEW_WIDTH, height: PLANT_VIEW_HEIGHT, tint: null };
+		case 'sunflower':
+			return { width: PLANT_VIEW_WIDTH, height: PLANT_VIEW_HEIGHT, tint: null };
+		case 'wall-nut':
+			return { width: 72, height: 72, tint: 0xb45309 };
+		case 'snow-pea':
+			return { width: PLANT_VIEW_WIDTH, height: PLANT_VIEW_HEIGHT, tint: 0x38bdf8 };
 	}
 }
 

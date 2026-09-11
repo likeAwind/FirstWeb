@@ -1,4 +1,4 @@
-import { HIT_DISTANCE, PROJECTILE_MIN_X } from './constants';
+import { HIT_DISTANCE, PROJECTILE_MIN_X, SLOW_DURATION } from './constants';
 import type { ProjectileState, WorldState, ZombieState } from './types';
 
 function findSweptHit(projectile: ProjectileState, prevX: number, zombies: ZombieState[]): ZombieState | null {
@@ -30,6 +30,9 @@ export function stepExistingProjectiles(
 		const hit = findSweptHit(projectile, prevX, world.zombies);
 		if (hit) {
 			hit.hp -= projectile.damage;
+			if (projectile.kind === 'snow-pea') {
+				hit.slowRemaining = SLOW_DURATION;
+			}
 			expiredIds.add(projectile.id);
 			hitCount += 1;
 			continue;

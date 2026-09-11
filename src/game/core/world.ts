@@ -1,5 +1,13 @@
-import type { WorldState } from './types';
-import { STARTING_SUN } from './constants';
+import { PLANT_KINDS, STARTING_SUN } from './constants';
+import type { PlantKind, WorldState } from './types';
+
+function emptyCardCooldowns(): Record<PlantKind, number> {
+	const cardCooldowns = {} as Record<PlantKind, number>;
+	for (const kind of PLANT_KINDS) {
+		cardCooldowns[kind] = 0;
+	}
+	return cardCooldowns;
+}
 
 export function createInitialWorld(): WorldState {
 	return {
@@ -15,5 +23,6 @@ export function createInitialWorld(): WorldState {
 		nextSpawnIndex: 0,
 		sun: STARTING_SUN,
 		sunIncomeElapsed: 0,
+		cardCooldowns: emptyCardCooldowns(),
 	};
 }
