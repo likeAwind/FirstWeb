@@ -1,12 +1,14 @@
 import { applyPlantAttacks } from './combat';
 import { stepSunIncome } from './plants';
 import { stepExistingProjectiles } from './projectiles';
-import type { WorldState } from './types';
+import type { WorldState, WorldStepEvents } from './types';
 import { stepWaves } from './waves';
 import { stepExistingZombies } from './zombies';
 
-export function stepWorld(world: WorldState, dt: number): void {
-	if (world.gameStatus !== 'playing') return;
+const NO_STEP_EVENTS: WorldStepEvents = { projectileHitCount: 0 };
+
+export function stepWorld(world: WorldState, dt: number): WorldStepEvents {
+	if (world.gameStatus !== 'playing') return NO_STEP_EVENTS;
 
 	stepSunIncome(world, dt);
 	stepExistingZombies(world, dt);
@@ -16,14 +18,16 @@ export function stepWorld(world: WorldState, dt: number): void {
 	if (world.zombies.some((zombie) => zombie.reachedEnd)) {
 		world.gameStatus = 'game-over';
 		world.projectiles = [];
-		return;
+		return NO_STEP_EVENTS;
 	}
 
-	const expiredProjectileIds = stepExistingProjectiles(world, dt);
+	const { expiredIds, hitCount } = stepExistingProjectiles(world, dt);
 
 	world.zombies = world.zombies.filter((zombie) => zombie.hp > 0);
-	world.projectiles = world.projectiles.filter((projectile) => !expiredProjectileIds.has(projectile.id));
+	world.projectiles = world.projectiles.filter((projectile) => !expiredIds.has(projectile.id));
 
 	applyPlantAttacks(world, dt);
 	stepWaves(world, dt);
+
+	return { projectileHitCount: hitCount };
 }

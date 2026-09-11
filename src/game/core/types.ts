@@ -58,3 +58,7 @@ export interface WorldState {
 	sun: number;
 	sunIncomeElapsed: number;
 }
+
+export interface WorldStepEvents {
+	projectileHitCount: number;
+}

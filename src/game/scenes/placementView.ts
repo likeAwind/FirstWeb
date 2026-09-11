@@ -4,6 +4,7 @@ import {
 	GAME_HEIGHT,
 	GRID_CELL_HEIGHT,
 	GRID_CELL_WIDTH,
+	PLAYFIELD_TOP,
 	PLANT_ATTACK_ANIM_KEY,
 	PLANT_DEATH_ANIM_KEY,
 	PLANT_IDLE_ANIM_KEY,
@@ -36,7 +37,7 @@ export function plantViewKeys(kind: PlantKind): PlantViewKeys {
 }
 
 export function hitTestPlantCell(px: number, py: number): GridCellHit | null {
-	if (px < 0 || py < 0 || px > WORLD_WIDTH || py > GAME_HEIGHT) return null;
+	if (px < 0 || py < PLAYFIELD_TOP || px > WORLD_WIDTH || py > GAME_HEIGHT) return null;
 
 	let lane: LaneId | null = null;
 	for (let i = 0; i < LANE_COUNT; i++) {

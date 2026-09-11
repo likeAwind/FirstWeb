@@ -12,9 +12,12 @@ import {
 	startBattle,
 	stepWorld,
 } from '../core';
-import type { PlacePlantResult, PlantKind, WorldState } from '../core';
+import type { GameStatus, PlacePlantResult, PlantKind, WorldState } from '../core';
 import {
 	BUTTON_FILL_COLOR,
+	BGM_MAIN_KEY,
+	BGM_MAIN_URLS,
+	BGM_MAIN_VOLUME,
 	CARD_FILL_COLOR,
 	CARD_SELECTED_COLOR,
 	COLOR_HP,
@@ -22,10 +25,10 @@ import {
 	COLOR_UI,
 	DEPTH_GRID,
 	DEPTH_HP,
+	DEPTH_HUD_BG,
 	DEPTH_SPRITE,
 	DEPTH_STATUS,
 	DEPTH_UI,
-	GAME_HEIGHT,
 	GRID_CELL_HEIGHT,
 	GRID_CELL_WIDTH,
 	GRID_FILL_ALPHA,
@@ -33,9 +36,16 @@ import {
 	GRID_STROKE_COLOR,
 	HINT_TEXT_X,
 	HINT_TEXT_Y,
+	HINT_WRAP_WIDTH,
 	HOVER_INVALID_COLOR,
 	HOVER_VALID_COLOR,
 	HP_LABEL_OFFSET_Y,
+	HUD_BG_COLOR,
+	HUD_CARD_X,
+	HUD_CARD_Y,
+	HUD_HEIGHT,
+	HUD_START_X,
+	HUD_START_Y,
 	PEA_FLY_ANIM_KEY,
 	PEA_FRAME_HEIGHT,
 	PEA_FRAME_WIDTH,
@@ -44,6 +54,9 @@ import {
 	PEA_SHEET_URL,
 	PEA_VIEW_HEIGHT,
 	PEA_VIEW_WIDTH,
+	PLAYFIELD_CENTER_Y,
+	PLAYFIELD_HEIGHT,
+	PLAYFIELD_TOP,
 	PLANT_ATTACK_FRAME_RATE,
 	PLANT_ATTACK_SHEET_KEY,
 	PLANT_ATTACK_SHEET_URL,
@@ -57,6 +70,23 @@ import {
 	PLANT_IDLE_SHEET_URL,
 	PLANT_VIEW_HEIGHT,
 	PLANT_VIEW_WIDTH,
+	SFX_BUTTON_CLICK_KEY,
+	SFX_BUTTON_CLICK_VOLUME,
+	SFX_FILES,
+	SFX_GAME_OVER_KEY,
+	SFX_GAME_OVER_VOLUME,
+	SFX_PEA_HIT_KEY,
+	SFX_PEA_HIT_VOLUME,
+	SFX_PEA_SHOOT_KEY,
+	SFX_PEA_SHOOT_VOLUME,
+	SFX_PLANT_DEATH_KEY,
+	SFX_PLANT_DEATH_VOLUME,
+	SFX_PLANT_PLACE_KEY,
+	SFX_PLANT_PLACE_VOLUME,
+	SFX_VICTORY_KEY,
+	SFX_VICTORY_VOLUME,
+	SFX_ZOMBIE_DEATH_KEY,
+	SFX_ZOMBIE_DEATH_VOLUME,
 	STATUS_TEXT_SIZE,
 	SUN_TEXT_X,
 	SUN_TEXT_Y,
@@ -105,6 +135,8 @@ export class GameScene extends Phaser.Scene {
 	private startLabel!: Phaser.GameObjects.Text;
 	private restartButton!: Phaser.GameObjects.Rectangle;
 	private restartLabel!: Phaser.GameObjects.Text;
+	private bgm?: Phaser.Sound.BaseSound;
+	private previousGameStatus: GameStatus = 'preparing';
 
 	constructor() {
 		super('GameScene');
@@ -135,12 +167,17 @@ export class GameScene extends Phaser.Scene {
 			frameWidth: ZOMBIE_FRAME_WIDTH,
 			frameHeight: ZOMBIE_FRAME_HEIGHT,
 		});
+		this.load.audio(BGM_MAIN_KEY, BGM_MAIN_URLS);
+		for (const sfx of SFX_FILES) {
+			this.load.audio(sfx.key, sfx.url);
+		}
 	}
 
 	create(): void {
 		this.registerAnimations();
 
 		this.world = createInitialWorld();
+		this.previousGameStatus = this.world.gameStatus;
 		this.selectedPlantKind = null;
 		this.hoveredCell = null;
 		this.hint = '准备阶段：选择植物并点击格子种植';
@@ -170,6 +207,9 @@ export class GameScene extends Phaser.Scene {
 			this.input.off('pointerdown', this.onPointerDown, this);
 			this.input.off('pointermove', this.onPointerMove, this);
 			this.input.keyboard?.off('keydown-ESC', this.cancelSelection, this);
+			this.stopBgm();
+			this.bgm?.destroy();
+			this.bgm = undefined;
 		});
 	}
 
@@ -232,8 +272,12 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	private drawLanes(): void {
+		this.add
+			.rectangle(WORLD_WIDTH / 2, PLAYFIELD_TOP, WORLD_WIDTH, 2, COLOR_LANE_LINE)
+			.setDepth(DEPTH_GRID);
+
 		for (let i = 1; i < LANE_COUNT; i++) {
-			const y = (GAME_HEIGHT / LANE_COUNT) * i;
+			const y = PLAYFIELD_TOP + (PLAYFIELD_HEIGHT / LANE_COUNT) * i;
 			this.add.rectangle(WORLD_WIDTH / 2, y, WORLD_WIDTH, 2, COLOR_LANE_LINE).setDepth(DEPTH_GRID);
 		}
 	}
@@ -258,6 +302,8 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	private createHud(): void {
+		this.add.rectangle(WORLD_WIDTH / 2, HUD_HEIGHT / 2, WORLD_WIDTH, HUD_HEIGHT, HUD_BG_COLOR).setDepth(DEPTH_HUD_BG);
+
 		this.waveText = this.add.text(WAVE_TEXT_X, WAVE_TEXT_Y, '', {
 			fontFamily: 'sans-serif',
 			fontSize: '18px',
@@ -276,11 +322,11 @@ export class GameScene extends Phaser.Scene {
 			fontFamily: 'sans-serif',
 			fontSize: '14px',
 			color: COLOR_UI,
-			wordWrap: { width: 400 },
+			wordWrap: { width: HINT_WRAP_WIDTH },
 		});
 		this.hintText.setDepth(DEPTH_UI);
 
-		this.statusText = this.add.text(WORLD_WIDTH / 2, GAME_HEIGHT / 2, '', {
+		this.statusText = this.add.text(WORLD_WIDTH / 2, PLAYFIELD_CENTER_Y, '', {
 			fontFamily: 'sans-serif',
 			fontSize: STATUS_TEXT_SIZE,
 			color: COLOR_UI,
@@ -292,14 +338,14 @@ export class GameScene extends Phaser.Scene {
 
 	private createCard(): void {
 		const cost = PLANT_CONFIG['pea-shooter'].cost;
-		this.cardBg = this.add.rectangle(86, 150, 148, 76, CARD_FILL_COLOR);
+		this.cardBg = this.add.rectangle(HUD_CARD_X, HUD_CARD_Y, 148, 76, CARD_FILL_COLOR);
 		this.cardBg.setStrokeStyle(2, GRID_STROKE_COLOR);
 		this.cardBg.setInteractive({ useHandCursor: true });
 		this.cardBg.setDepth(DEPTH_UI);
 		this.cardBg.on('pointerdown', this.onCardClicked, this);
 
 		this.add
-			.text(86, 132, '豌豆射手', {
+			.text(HUD_CARD_X, HUD_CARD_Y - 14, '豌豆射手', {
 				fontFamily: 'sans-serif',
 				fontSize: '16px',
 				color: COLOR_UI,
@@ -308,7 +354,7 @@ export class GameScene extends Phaser.Scene {
 			.setDepth(DEPTH_UI);
 
 		this.add
-			.text(86, 158, `${cost} 阳光`, {
+			.text(HUD_CARD_X, HUD_CARD_Y + 14, `${cost} 阳光`, {
 				fontFamily: 'sans-serif',
 				fontSize: '14px',
 				color: COLOR_UI,
@@ -318,14 +364,14 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	private createButtons(): void {
-		this.startButton = this.add.rectangle(86, 230, 148, 40, BUTTON_FILL_COLOR);
+		this.startButton = this.add.rectangle(HUD_START_X, HUD_START_Y, 148, 40, BUTTON_FILL_COLOR);
 		this.startButton.setStrokeStyle(2, GRID_STROKE_COLOR);
 		this.startButton.setInteractive({ useHandCursor: true });
 		this.startButton.setDepth(DEPTH_UI);
 		this.startButton.on('pointerdown', this.onStartClicked, this);
 
 		this.startLabel = this.add
-			.text(86, 230, '开始战斗', {
+			.text(HUD_START_X, HUD_START_Y, '开始战斗', {
 				fontFamily: 'sans-serif',
 				fontSize: '16px',
 				color: COLOR_UI,
@@ -333,14 +379,14 @@ export class GameScene extends Phaser.Scene {
 			.setOrigin(0.5, 0.5)
 			.setDepth(DEPTH_UI);
 
-		this.restartButton = this.add.rectangle(WORLD_WIDTH / 2, GAME_HEIGHT / 2 + 56, 160, 40, BUTTON_FILL_COLOR);
+		this.restartButton = this.add.rectangle(WORLD_WIDTH / 2, PLAYFIELD_CENTER_Y + 56, 160, 40, BUTTON_FILL_COLOR);
 		this.restartButton.setStrokeStyle(2, GRID_STROKE_COLOR);
 		this.restartButton.setInteractive({ useHandCursor: true });
 		this.restartButton.setDepth(DEPTH_STATUS);
 		this.restartButton.on('pointerdown', this.onRestartClicked, this);
 
 		this.restartLabel = this.add
-			.text(WORLD_WIDTH / 2, GAME_HEIGHT / 2 + 56, '重新开始', {
+			.text(WORLD_WIDTH / 2, PLAYFIELD_CENTER_Y + 56, '重新开始', {
 				fontFamily: 'sans-serif',
 				fontSize: '16px',
 				color: COLOR_UI,
@@ -350,6 +396,7 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	private onCardClicked(): void {
+		this.playSfx(SFX_BUTTON_CLICK_KEY, SFX_BUTTON_CLICK_VOLUME);
 		if (this.selectedPlantKind === 'pea-shooter') {
 			this.cancelSelection();
 			this.hint = '已取消选择';
@@ -363,6 +410,7 @@ export class GameScene extends Phaser.Scene {
 	}
 
 	private onStartClicked(): void {
+		this.playSfx(SFX_BUTTON_CLICK_KEY, SFX_BUTTON_CLICK_VOLUME);
 		if (!startBattle(this.world)) {
 			this.hint = '请先种至少一株植物';
 			this.syncHud();
@@ -371,10 +419,36 @@ export class GameScene extends Phaser.Scene {
 
 		this.hint = '战斗开始';
 		this.cancelSelection();
+		this.startBgm();
 		this.syncHud();
 	}
 
+	private startBgm(): void {
+		if (this.bgm?.isPlaying) return;
+
+		if (!this.bgm) {
+			this.bgm = this.sound.add(BGM_MAIN_KEY, {
+				loop: true,
+				volume: BGM_MAIN_VOLUME,
+			});
+		}
+
+		if (!this.bgm.isPlaying) {
+			this.bgm.play();
+		}
+	}
+
+	private stopBgm(): void {
+		if (!this.bgm) return;
+		if (this.bgm.isPlaying) this.bgm.stop();
+	}
+
+	private playSfx(key: string, volume: number): void {
+		this.sound.play(key, { volume });
+	}
+
 	private onRestartClicked(): void {
+		this.playSfx(SFX_BUTTON_CLICK_KEY, SFX_BUTTON_CLICK_VOLUME);
 		this.scene.restart();
 	}
 
@@ -425,6 +499,7 @@ export class GameScene extends Phaser.Scene {
 	private tryPlace(kind: PlantKind, lane: 0 | 1 | 2, columnIndex: number): void {
 		const result = placePlant(this.world, kind, lane, columnIndex);
 		if (result === 'placed') {
+			this.playSfx(SFX_PLANT_PLACE_KEY, SFX_PLANT_PLACE_VOLUME);
 			this.hint = '';
 			this.cancelSelection();
 			return;
@@ -532,6 +607,7 @@ export class GameScene extends Phaser.Scene {
 			hpText?.destroy();
 
 			if (sprite) {
+				this.playSfx(SFX_PLANT_DEATH_KEY, SFX_PLANT_DEATH_VOLUME);
 				const kind = (sprite.getData('plantKind') ?? 'pea-shooter') as PlantKind;
 				this.playPlantDeath(sprite, kind);
 			}
@@ -578,7 +654,10 @@ export class GameScene extends Phaser.Scene {
 			this.zombieHpViews.delete(id);
 			hpText?.destroy();
 
-			if (sprite) this.playZombieDeath(sprite);
+			if (sprite) {
+				this.playSfx(SFX_ZOMBIE_DEATH_KEY, SFX_ZOMBIE_DEATH_VOLUME);
+				this.playZombieDeath(sprite);
+			}
 		}
 
 		for (const zombie of this.world.zombies) {
@@ -631,6 +710,7 @@ export class GameScene extends Phaser.Scene {
 				sprite.play(PEA_FLY_ANIM_KEY);
 				this.projectileViews.set(projectile.id, sprite);
 				this.playPlantAttack(projectile.sourcePlantId);
+				this.playSfx(SFX_PEA_SHOOT_KEY, SFX_PEA_SHOOT_VOLUME);
 				continue;
 			}
 
@@ -650,6 +730,8 @@ export class GameScene extends Phaser.Scene {
 
 		const preparing = this.world.gameStatus === 'preparing';
 		const terminal = this.world.gameStatus === 'victory' || this.world.gameStatus === 'game-over';
+
+		if (terminal) this.stopBgm();
 
 		this.setButtonShown(this.startButton, this.startLabel, preparing);
 		this.setButtonShown(this.restartButton, this.restartLabel, terminal);
@@ -673,12 +755,32 @@ export class GameScene extends Phaser.Scene {
 
 	override update(_time: number, delta: number): void {
 		const dt = Math.min(delta / 1000, 0.05);
-		stepWorld(this.world, dt);
+		const events = stepWorld(this.world, dt);
 
+		for (let i = 0; i < events.projectileHitCount; i++) {
+			this.playSfx(SFX_PEA_HIT_KEY, SFX_PEA_HIT_VOLUME);
+		}
+
+		this.handleStatusTransition();
 		this.syncPlantViews();
 		this.syncZombieViews();
 		this.syncProjectileViews();
 		this.syncHud();
 		if (this.selectedPlantKind && this.hoveredCell) this.updateGridHover();
+	}
+
+	private handleStatusTransition(): void {
+		const status = this.world.gameStatus;
+		const wasPlaying = this.previousGameStatus === 'playing';
+
+		if (wasPlaying && status === 'victory') {
+			this.stopBgm();
+			this.playSfx(SFX_VICTORY_KEY, SFX_VICTORY_VOLUME);
+		} else if (wasPlaying && status === 'game-over') {
+			this.stopBgm();
+			this.playSfx(SFX_GAME_OVER_KEY, SFX_GAME_OVER_VOLUME);
+		}
+
+		this.previousGameStatus = status;
 	}
 }

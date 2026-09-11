@@ -9,6 +9,7 @@ export type {
 	ZombieState,
 	ProjectileState,
 	WorldState,
+	WorldStepEvents,
 } from './types';
 export {
 	LANE_COUNT,

@@ -16,8 +16,12 @@ function findSweptHit(projectile: ProjectileState, prevX: number, zombies: Zombi
 	return best;
 }
 
-export function stepExistingProjectiles(world: WorldState, dt: number): Set<string> {
+export function stepExistingProjectiles(
+	world: WorldState,
+	dt: number,
+): { expiredIds: Set<string>; hitCount: number } {
 	const expiredIds = new Set<string>();
+	let hitCount = 0;
 
 	for (const projectile of world.projectiles) {
 		const prevX = projectile.x;
@@ -27,6 +31,7 @@ export function stepExistingProjectiles(world: WorldState, dt: number): Set<stri
 		if (hit) {
 			hit.hp -= projectile.damage;
 			expiredIds.add(projectile.id);
+			hitCount += 1;
 			continue;
 		}
 
@@ -35,5 +40,5 @@ export function stepExistingProjectiles(world: WorldState, dt: number): Set<stri
 		}
 	}
 
-	return expiredIds;
+	return { expiredIds, hitCount };
 }

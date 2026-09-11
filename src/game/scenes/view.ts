@@ -1,7 +1,11 @@
-import { LANE_COUNT } from '../core';
+import { LANE_COUNT, WORLD_WIDTH } from '../core';
 import type { LaneId, ZombieKind } from '../core';
 
-export const GAME_HEIGHT = 480;
+export const HUD_HEIGHT = 96;
+export const PLAYFIELD_HEIGHT = 480;
+export const PLAYFIELD_TOP = HUD_HEIGHT;
+export const GAME_HEIGHT = HUD_HEIGHT + PLAYFIELD_HEIGHT;
+export const PLAYFIELD_CENTER_Y = PLAYFIELD_TOP + PLAYFIELD_HEIGHT / 2;
 
 export const PLANT_VIEW_WIDTH = 64;
 export const PLANT_VIEW_HEIGHT = 64;
@@ -62,12 +66,55 @@ export const COLOR_UI = '#ffffff';
 export const HP_LABEL_OFFSET_Y = 40;
 
 export const WAVE_TEXT_X = 12;
-export const WAVE_TEXT_Y = 10;
+export const WAVE_TEXT_Y = 8;
 export const SUN_TEXT_X = 12;
-export const SUN_TEXT_Y = 34;
+export const SUN_TEXT_Y = 32;
 export const HINT_TEXT_X = 12;
-export const HINT_TEXT_Y = 58;
+export const HINT_TEXT_Y = 56;
+export const HINT_WRAP_WIDTH = 220;
 export const STATUS_TEXT_SIZE = '36px';
+
+export const HUD_BG_COLOR = 0x111827;
+export const HUD_CARD_X = WORLD_WIDTH / 2;
+export const HUD_CARD_Y = HUD_HEIGHT / 2;
+export const HUD_START_X = WORLD_WIDTH - 86;
+export const HUD_START_Y = HUD_HEIGHT / 2;
+
+export const BGM_MAIN_KEY = 'bgm-main';
+export const BGM_MAIN_URLS = [
+	'/game/audio/bgm/tower-defense-bgm-loop.ogg',
+	'/game/audio/bgm/tower-defense-bgm-loop.mp3',
+];
+export const BGM_MAIN_VOLUME = 0.35;
+
+export const SFX_PEA_SHOOT_KEY = 'sfx-pea-shoot';
+export const SFX_PEA_HIT_KEY = 'sfx-pea-hit';
+export const SFX_ZOMBIE_DEATH_KEY = 'sfx-zombie-death';
+export const SFX_PLANT_PLACE_KEY = 'sfx-plant-place';
+export const SFX_PLANT_DEATH_KEY = 'sfx-plant-death';
+export const SFX_BUTTON_CLICK_KEY = 'sfx-button-click';
+export const SFX_VICTORY_KEY = 'sfx-victory';
+export const SFX_GAME_OVER_KEY = 'sfx-game-over';
+
+export const SFX_PEA_SHOOT_VOLUME = 0.2;
+export const SFX_PEA_HIT_VOLUME = 0.18;
+export const SFX_ZOMBIE_DEATH_VOLUME = 0.28;
+export const SFX_PLANT_PLACE_VOLUME = 0.28;
+export const SFX_PLANT_DEATH_VOLUME = 0.3;
+export const SFX_BUTTON_CLICK_VOLUME = 0.18;
+export const SFX_VICTORY_VOLUME = 0.55;
+export const SFX_GAME_OVER_VOLUME = 0.55;
+
+export const SFX_FILES: ReadonlyArray<{ key: string; url: string }> = [
+	{ key: SFX_PEA_SHOOT_KEY, url: '/game/audio/sfx/pea-shoot.mp3' },
+	{ key: SFX_PEA_HIT_KEY, url: '/game/audio/sfx/pea-hit.mp3' },
+	{ key: SFX_ZOMBIE_DEATH_KEY, url: '/game/audio/sfx/zombie-death.mp3' },
+	{ key: SFX_PLANT_PLACE_KEY, url: '/game/audio/sfx/plant-place.mp3' },
+	{ key: SFX_PLANT_DEATH_KEY, url: '/game/audio/sfx/plant-death.mp3' },
+	{ key: SFX_BUTTON_CLICK_KEY, url: '/game/audio/sfx/button-click.mp3' },
+	{ key: SFX_VICTORY_KEY, url: '/game/audio/sfx/victory.mp3' },
+	{ key: SFX_GAME_OVER_KEY, url: '/game/audio/sfx/game-over.mp3' },
+];
 
 export const GRID_CELL_WIDTH = 56;
 export const GRID_CELL_HEIGHT = 100;
@@ -83,6 +130,7 @@ export const BUTTON_FILL_COLOR = 0x1e293b;
 export const DEPTH_GRID = 1;
 export const DEPTH_SPRITE = 10;
 export const DEPTH_HP = 20;
+export const DEPTH_HUD_BG = 900;
 export const DEPTH_UI = 1000;
 export const DEPTH_STATUS = 1100;
 
@@ -93,7 +141,7 @@ export function zombieViewSize(kind: ZombieKind): { width: number; height: numbe
 	return { width: ZOMBIE_VIEW_WIDTH, height: ZOMBIE_VIEW_HEIGHT };
 }
 
-export function laneToY(lane: LaneId, gameHeight: number = GAME_HEIGHT, laneCount: number = LANE_COUNT): number {
-	const band = gameHeight / laneCount;
-	return band * lane + band / 2;
+export function laneToY(lane: LaneId, playfieldHeight: number = PLAYFIELD_HEIGHT, laneCount: number = LANE_COUNT): number {
+	const band = playfieldHeight / laneCount;
+	return PLAYFIELD_TOP + band * lane + band / 2;
 }
