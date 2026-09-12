@@ -16,6 +16,7 @@ function emptyStepEvents(): WorldStepEvents {
 export function stepWorld(world: WorldState, dt: number): WorldStepEvents {
 	if (world.gameStatus !== 'playing') return emptyStepEvents();
 
+	world.runElapsed += dt;
 	stepSunIncome(world, dt);
 	const plantDamagedIds = stepExistingZombies(world, dt);
 

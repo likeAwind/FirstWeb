@@ -130,6 +130,9 @@ import {
 	zombieViewSize,
 } from './view';
 import { hitTestPlantCell, plantPlaceholderStyle, plantViewKeys } from './placementView';
+import { createLeaderboardOverlay } from '../ui/leaderboardOverlay';
+import type { LeaderboardOverlay } from '../ui/leaderboardOverlay';
+import { formatClearTime } from '../api/leaderboardClient';
 
 interface GridCellView {
 	lane: 0 | 1 | 2;
@@ -161,6 +164,7 @@ export class GameScene extends Phaser.Scene {
 	private restartLabel!: Phaser.GameObjects.Text;
 	private bgm?: Phaser.Sound.BaseSound;
 	private previousGameStatus: GameStatus = 'preparing';
+	private leaderboardOverlay: LeaderboardOverlay | null = null;
 
 	constructor() {
 		super('GameScene');
@@ -239,8 +243,18 @@ export class GameScene extends Phaser.Scene {
 		this.createCards();
 		this.createButtons();
 		this.registerInput();
+		this.mountLeaderboardOverlay();
 
 		this.syncHud();
+	}
+
+	private mountLeaderboardOverlay(): void {
+		this.leaderboardOverlay?.destroy();
+		this.leaderboardOverlay = null;
+		const root = this.game.canvas.parentElement;
+		if (!root) return;
+		this.leaderboardOverlay = createLeaderboardOverlay(root);
+		this.leaderboardOverlay.showPreparing();
 	}
 
 	private registerInput(): void {
@@ -263,6 +277,8 @@ export class GameScene extends Phaser.Scene {
 			this.stopBgm();
 			this.bgm?.destroy();
 			this.bgm = undefined;
+			this.leaderboardOverlay?.destroy();
+			this.leaderboardOverlay = null;
 		});
 	}
 
@@ -527,6 +543,7 @@ export class GameScene extends Phaser.Scene {
 		this.hint = '战斗开始';
 		this.cancelSelection();
 		this.startBgm();
+		this.leaderboardOverlay?.showPlaying();
 		this.syncHud();
 	}
 
@@ -867,7 +884,8 @@ export class GameScene extends Phaser.Scene {
 		syncCardBar(this.cardViews, this.world, this.selectedPlantKind);
 
 		if (this.world.gameStatus === 'victory') {
-			this.statusText.setText('胜利');
+			const clearTimeMs = Math.round(this.world.runElapsed * 1000);
+			this.statusText.setText(`胜利  ${formatClearTime(clearTimeMs)}`);
 			this.statusText.setVisible(true);
 			return;
 		}
@@ -952,12 +970,18 @@ export class GameScene extends Phaser.Scene {
 		const status = this.world.gameStatus;
 		const wasPlaying = this.previousGameStatus === 'playing';
 
+		if (this.previousGameStatus === 'preparing' && status === 'playing') {
+			this.leaderboardOverlay?.showPlaying();
+		}
+
 		if (wasPlaying && status === 'victory') {
 			this.stopBgm();
 			this.playSfx(SFX_VICTORY_KEY, SFX_VICTORY_VOLUME);
+			this.leaderboardOverlay?.showVictory(Math.round(this.world.runElapsed * 1000));
 		} else if (wasPlaying && status === 'game-over') {
 			this.stopBgm();
 			this.playSfx(SFX_GAME_OVER_KEY, SFX_GAME_OVER_VOLUME);
+			this.leaderboardOverlay?.showGameOver();
 		}
 
 		this.previousGameStatus = status;

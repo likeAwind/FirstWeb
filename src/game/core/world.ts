@@ -24,5 +24,6 @@ export function createInitialWorld(): WorldState {
 		sun: STARTING_SUN,
 		sunIncomeElapsed: 0,
 		cardCooldowns: emptyCardCooldowns(),
+		runElapsed: 0,
 	};
 }

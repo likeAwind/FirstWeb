@@ -93,6 +93,7 @@ export interface WorldState {
 	sun: number;
 	sunIncomeElapsed: number;
 	cardCooldowns: Record<PlantKind, number>;
+	runElapsed: number;
 }
 
 export interface WorldStepEvents {
