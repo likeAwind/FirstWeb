@@ -1,6 +1,6 @@
 export const LEADERBOARD_GAME_VERSION = 'mvp-8';
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE_URL = '';
 
 export interface SubmitScoreResult {
 	runId: string;
@@ -23,7 +23,7 @@ export interface LeaderboardListResult {
 }
 
 export async function submitScore(playerName: string, clearTimeMs: number): Promise<SubmitScoreResult> {
-	const response = await fetch(`${API_BASE}/api/leaderboard`, {
+	const response = await fetch(`${API_BASE_URL}/api/leaderboard`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -41,7 +41,7 @@ export async function submitScore(playerName: string, clearTimeMs: number): Prom
 }
 
 export async function fetchTop10(): Promise<LeaderboardListResult> {
-	const response = await fetch(`${API_BASE}/api/leaderboard`);
+	const response = await fetch(`${API_BASE_URL}/api/leaderboard`);
 	const body = await response.json().catch(() => null);
 	if (!response.ok) {
 		throw new Error('排行榜加载失败');
